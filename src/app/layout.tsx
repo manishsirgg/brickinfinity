@@ -1,0 +1,143 @@
+import "./globals.css";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+
+const baseUrl = "https://brickinfinity.com";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+/* =====================================================
+   GLOBAL SEO METADATA
+===================================================== */
+
+export const metadata: Metadata = {
+  metadataBase: new URL(baseUrl),
+
+  title: {
+    default: "BrickInfinity | Buy, Rent & List Properties",
+    template: "%s | BrickInfinity",
+  },
+
+  description:
+    "BrickInfinity is a modern real estate marketplace to buy, rent, and list properties with verified listings and secure lead management.",
+
+  applicationName: "BrickInfinity",
+
+  alternates: {
+    canonical: baseUrl,
+  },
+
+  keywords: [
+    "real estate",
+    "buy property",
+    "rent property",
+    "property marketplace",
+    "India real estate",
+    "BrickInfinity",
+  ],
+
+  authors: [{ name: "BrickInfinity" }],
+  creator: "BrickInfinity",
+  publisher: "BrickInfinity",
+
+  referrer: "origin-when-cross-origin",
+
+  openGraph: {
+    title: "BrickInfinity | Real Estate Marketplace",
+    description:
+      "Discover verified properties for sale and rent. List your property and manage leads securely.",
+    url: baseUrl,
+    siteName: "BrickInfinity",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "BrickInfinity Real Estate Marketplace",
+      },
+    ],
+    locale: "en_IN",
+    type: "website",
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "BrickInfinity | Real Estate Marketplace",
+    description:
+      "Buy, rent, and list properties on a secure and modern real estate platform.",
+    images: ["/og-image.jpg"],
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+  },
+
+  icons: {
+    icon: "/favicon.ico",
+  },
+};
+
+/* =====================================================
+   GLOBAL VIEWPORT
+===================================================== */
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#E53935" },
+    { media: "(prefers-color-scheme: dark)", color: "#0F2747" },
+  ],
+};
+
+/* =====================================================
+   ROOT LAYOUT
+===================================================== */
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "BrickInfinity",
+    url: baseUrl,
+    logo: `${baseUrl}/logo.png`,
+  };
+
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${inter.variable} font-sans min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-dark)] antialiased`}
+      >
+        {/* GLOBAL BRAND SCHEMA */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+        />
+
+        {/* NAVBAR */}
+        <Navbar />
+
+        {/* PAGE CONTENT */}
+        <main className="flex-1 w-full">{children}</main>
+
+        {/* FOOTER */}
+        <Footer />
+      </body>
+    </html>
+  );
+}
