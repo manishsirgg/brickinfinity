@@ -94,6 +94,19 @@ export default function HeroSearch() {
     router.push(url);
   };
 
+  useEffect(()=>{
+    loadStates();
+  },[]);
+
+  useEffect(()=>{
+    if(stateId) {
+      loadCities();
+      return;
+    }
+
+    setCities([]);
+  },[stateId]);
+
   return (
     <form
       onSubmit={handleSearch}

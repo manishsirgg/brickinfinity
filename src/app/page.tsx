@@ -4,8 +4,6 @@ import Button from "@/components/ui/Button";
 import HeroSearch from "@/components/HeroSearch";
 import PropertyCard from "@/components/property/PropertyCard";
 
-const baseUrl = "https://brickinfinity.com";
-
 export default async function HomePage() {
 
   const supabase = await createClient();

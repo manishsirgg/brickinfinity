@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface Props {
   images: { id?: string; image_url: string }[];
@@ -17,17 +17,17 @@ export default function PropertyGallery({ images = [] }: Props) {
     setIndex(i);
   };
 
-  const close = () => setIndex(null);
+  const close = useCallback(() => setIndex(null), []);
 
-  const next = () => {
+  const next = useCallback(() => {
     if (index === null || !hasImages) return;
     setIndex((index + 1) % images.length);
-  };
+  }, [hasImages, images.length, index]);
 
-  const prev = () => {
+  const prev = useCallback(() => {
     if (index === null || !hasImages) return;
     setIndex((index - 1 + images.length) % images.length);
-  };
+  }, [hasImages, images.length, index]);
 
   /* KEYBOARD NAVIGATION */
 
@@ -46,7 +46,7 @@ export default function PropertyGallery({ images = [] }: Props) {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
 
-  }, [index, images.length]);
+  }, [close, index, next, prev]);
 
   /* ===== NO IMAGES FALLBACK ===== */
 
