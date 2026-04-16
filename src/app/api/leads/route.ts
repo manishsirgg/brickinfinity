@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (property.status !== "approved" || property.deleted_at) {
+    if (property.status !== "active" || property.deleted_at) {
       return NextResponse.json(
         { error: "Property not active" },
         { status: 400 }

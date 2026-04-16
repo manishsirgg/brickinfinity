@@ -27,6 +27,8 @@ interface Profile {
   whatsapp_number: string | null;
   avatar_url: string | null;
   kyc_status: string;
+  seller_status?: string | null;
+  role?: string | null;
 }
 
 interface DocumentRow {
@@ -64,6 +66,8 @@ export default function ProfilePage() {
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [upgradeTarget, setUpgradeTarget] =
+    useState<"seller" | "admin">("seller");
 
   useEffect(() => {
 
@@ -145,6 +149,9 @@ export default function ProfilePage() {
   }
 
   setProfile(data);
+  setUpgradeTarget(
+    data.seller_status === "pending_admin" ? "admin" : "seller"
+  );
 
   /* Load KYC docs */
 
@@ -358,10 +365,18 @@ if (existing?.document_url) {
 
     await supabase
       .from("users")
-      .update({ kyc_status: "pending" })
+      .update({
+        kyc_status: "pending",
+        seller_status:
+          upgradeTarget === "admin"
+            ? "pending_admin"
+            : "pending_seller",
+      })
       .eq("user_id", sessionUser.id);
 
-    setMessage(`${type.replace("_", " ")} uploaded.`);
+    setMessage(
+      `${type.replace("_", " ")} uploaded for ${upgradeTarget} verification.`
+    );
     fetchProfile();
 
   } catch (err: any) {
@@ -528,13 +543,36 @@ const kycComplete = hasGovtId && hasSelfie;
 
           {/* KYC */}
 
-          <Card className="p-6 space-y-6">
+	          <Card className="p-6 space-y-6">
 
-            <h2 className="text-lg font-semibold">
-              Seller Verification
-            </h2>
+	            <h2 className="text-lg font-semibold">
+	              Seller Verification
+	            </h2>
 
-            <div className="grid sm:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Upgrade request type
+                </label>
+                <select
+                  value={upgradeTarget}
+                  disabled={uploadingKyc || profile?.kyc_status === "approved"}
+                  onChange={(e) =>
+                    setUpgradeTarget(
+                      e.target.value === "admin" ? "admin" : "seller"
+                    )
+                  }
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="seller">Upgrade to Seller</option>
+                  <option value="admin">Request Admin Upgrade</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                  Admin upgrade requests are never automatic; they require
+                  manual approval by an existing admin after KYC review.
+                </p>
+              </div>
+
+	            <div className="grid sm:grid-cols-2 gap-6">
 
               {(
                 ["aadhar","passport","driving_license","selfie"] as DocumentType[]
