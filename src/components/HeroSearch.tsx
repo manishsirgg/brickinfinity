@@ -1,115 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
 
-export default function HeroSearch() {
+type LocationOption = {
+  id: string;
+  name: string;
+};
 
+export default function HeroSearch() {
   const router = useRouter();
 
   const [listingType, setListingType] = useState<"Sale" | "Rent">("Sale");
 
-  const [states,setStates] = useState<any[]>([]);
-  const [cities,setCities] = useState<any[]>([]);
+  const [states, setStates] = useState<LocationOption[]>([]);
+  const [cities, setCities] = useState<LocationOption[]>([]);
 
-  const [stateId,setStateId] = useState("");
-  const [cityId,setCityId] = useState("");
+  const [stateId, setStateId] = useState("");
+  const [cityId, setCityId] = useState("");
 
   const [propertyType, setPropertyType] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [bedrooms, setBedrooms] = useState("");
 
-  async function loadStates(){
-    const { data } =
-      await supabase
-        .from("states")
-        .select("id,name")
-        .order("name");
+  const stateNameById = useMemo(
+    () => new Map(states.map((item) => [item.id, item.name])),
+    [states]
+  );
 
-    if(data) setStates(data);
-  }
+  const cityNameById = useMemo(
+    () => new Map(cities.map((item) => [item.id, item.name])),
+    [cities]
+  );
 
-  async function loadCities(){
-    const { data } =
-      await supabase
-        .from("cities")
-        .select("id,name")
-        .eq("state_id", stateId)
-        .order("name");
+  const loadStates = useCallback(async () => {
+    const { data } = await supabase
+      .from("states")
+      .select("id,name")
+      .order("name");
 
-    if(data) setCities(data);
-  }
+    setStates((data as LocationOption[]) || []);
+  }, []);
 
-  function getSelectedName(
-    items: Array<{ id: string; name: string }>,
-    id: string
-  ) {
-    if (!id) return "";
-    return items.find((item) => item.id === id)?.name || "";
-  }
+  const loadCities = useCallback(async (selectedStateId: string) => {
+    const { data } = await supabase
+      .from("cities")
+      .select("id,name")
+      .eq("state_id", selectedStateId)
+      .order("name");
+
+    setCities((data as LocationOption[]) || []);
+  }, []);
+
+  useEffect(() => {
+    loadStates();
+  }, [loadStates]);
+
+  useEffect(() => {
+    if (!stateId) {
+      setCities([]);
+      setCityId("");
+      return;
+    }
+
+    loadCities(stateId);
+  }, [stateId, loadCities]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (minPrice && maxPrice && Number(minPrice) > Number(maxPrice)) {
+    const min = minPrice.trim();
+    const max = maxPrice.trim();
+
+    if (min && max && Number(min) > Number(max)) {
       alert("Min price cannot be greater than max price");
       return;
     }
 
-    const selectedStateName = getSelectedName(states, stateId);
-    const selectedCityName = getSelectedName(cities, cityId);
+    const selectedStateName = stateNameById.get(stateId) || "";
+    const selectedCityName = cityNameById.get(cityId) || "";
 
     const params = new URLSearchParams();
 
     if (selectedStateName) params.set("state", selectedStateName);
     if (selectedCityName) params.set("city", selectedCityName);
     if (propertyType) params.set("propertyType", propertyType);
-    if (minPrice) params.set("minPrice", minPrice);
-    if (maxPrice) params.set("maxPrice", maxPrice);
+    if (min) params.set("minPrice", min);
+    if (max) params.set("maxPrice", max);
     if (bedrooms) params.set("bedrooms", bedrooms);
 
     const basePath = listingType === "Sale" ? "/buy" : "/rent";
-
-    const url = params.toString()
-      ? `${basePath}?${params.toString()}`
-      : basePath;
+    const url = params.toString() ? `${basePath}?${params.toString()}` : basePath;
 
     router.push(url);
   };
-
-  useEffect(()=>{
-    loadStates();
-  },[]);
-
-  useEffect(()=>{
-    if(stateId) {
-      loadCities();
-      return;
-    }
-
-    setCities([]);
-  },[stateId]);
 
   return (
     <form
       onSubmit={handleSearch}
       className="bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.08)] border border-gray-200 p-8 space-y-6"
     >
-
       <div className="text-center">
-        <p className="text-sm font-semibold text-gray-500 uppercase">
-          Start Your Search
-        </p>
+        <p className="text-sm font-semibold text-gray-500 uppercase">Start Your Search</p>
       </div>
 
-      {/* Toggle */}
       <div className="flex justify-center">
         <div className="relative flex bg-gray-200 rounded-full p-1 w-full max-w-xs">
-
           <div
             className={`absolute top-1 bottom-1 w-1/2 bg-red-600 rounded-full transition-all duration-300 ${
               listingType === "Sale" ? "left-1" : "left-1/2"
@@ -135,50 +135,42 @@ export default function HeroSearch() {
           >
             Rent
           </button>
-
         </div>
       </div>
 
       <div className="border-t" />
 
-      {/* Filters */}
       <div className="grid md:grid-cols-3 gap-4">
-
-        {/* STATE */}
         <select
           value={stateId}
-          onChange={(e)=>{
+          onChange={(e) => {
             setStateId(e.target.value);
             setCityId("");
           }}
           className="input"
         >
           <option value="">Select State</option>
-
-          {states.map((s)=>(
-            <option key={s.id} value={s.id}>
-              {s.name}
+          {states.map((state) => (
+            <option key={state.id} value={state.id}>
+              {state.name}
             </option>
           ))}
         </select>
 
-        {/* CITY */}
         <select
           value={cityId}
           disabled={!stateId}
-          onChange={(e)=>setCityId(e.target.value)}
+          onChange={(e) => setCityId(e.target.value)}
           className="input"
         >
           <option value="">Select City</option>
-
-          {cities.map((c)=>(
-            <option key={c.id} value={c.id}>
-              {c.name}
+          {cities.map((city) => (
+            <option key={city.id} value={city.id}>
+              {city.name}
             </option>
           ))}
         </select>
 
-        {/* PROPERTY TYPE */}
         <select
           value={propertyType}
           onChange={(e) => setPropertyType(e.target.value)}
@@ -192,7 +184,6 @@ export default function HeroSearch() {
           <option>Commercial</option>
         </select>
 
-        {/* BEDROOMS */}
         <select
           value={bedrooms}
           onChange={(e) => setBedrooms(e.target.value)}
@@ -221,7 +212,6 @@ export default function HeroSearch() {
           onChange={(e) => setMaxPrice(e.target.value)}
           className="input"
         />
-
       </div>
 
       <button
@@ -230,7 +220,6 @@ export default function HeroSearch() {
       >
         Search Properties
       </button>
-
     </form>
   );
 }
