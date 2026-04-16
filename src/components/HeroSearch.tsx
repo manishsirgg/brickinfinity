@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -23,7 +23,7 @@ export default function HeroSearch() {
   const [maxPrice, setMaxPrice] = useState("");
   const [bedrooms, setBedrooms] = useState("");
 
-  const loadStates = useCallback(async()=>{
+  async function loadStates(){
     const { data } =
       await supabase
         .from("states")
@@ -31,9 +31,9 @@ export default function HeroSearch() {
         .order("name");
 
     if(data) setStates(data);
-  },[]);
+  }
 
-  const loadCities = useCallback(async()=>{
+  async function loadCities(){
     const { data } =
       await supabase
         .from("cities")
@@ -42,11 +42,11 @@ export default function HeroSearch() {
         .order("name");
 
     if(data) setCities(data);
-  },[stateId]);
+  }
 
   useEffect(()=>{
     loadStates();
-  },[loadStates]);
+  },[]);
 
   useEffect(()=>{
     if(stateId) {
@@ -55,7 +55,7 @@ export default function HeroSearch() {
     }
 
     setCities([]);
-  },[stateId, loadCities]);
+  },[stateId]);
 
   function getSelectedName(
     items: Array<{ id: string; name: string }>,
