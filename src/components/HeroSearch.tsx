@@ -23,6 +23,19 @@ export default function HeroSearch() {
   const [maxPrice, setMaxPrice] = useState("");
   const [bedrooms, setBedrooms] = useState("");
 
+  useEffect(()=>{
+    loadStates();
+  },[]);
+
+  useEffect(()=>{
+    if(stateId) {
+      loadCities();
+      return;
+    }
+
+    setCities([]);
+  },[stateId]);
+
   async function loadStates(){
     const { data } =
       await supabase
