@@ -1,16 +1,9 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
 const baseUrl = "https://brickinfinity.com";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
 
 /* =====================================================
    GLOBAL SEO METADATA
@@ -119,7 +112,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} font-sans min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-dark)] antialiased`}
+        className="font-sans min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-dark)] antialiased"
       >
         {/* GLOBAL BRAND SCHEMA */}
         <script
