@@ -72,6 +72,16 @@ export default function Footer() {
                   Seller Dashboard
                 </Link>
               </li>
+              <li>
+                <Link href="/blogs" className="hover:text-white transition-colors duration-200">
+                  Blogs
+                </Link>
+              </li>
+              <li>
+                <Link href="/blogs/write" className="hover:text-white transition-colors duration-200">
+                  Write a Blog
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -114,9 +124,31 @@ export default function Footer() {
             </h3>
 
             <ul className="space-y-3 md:space-y-4 text-sm text-white/70">
-              <li>Email: support@brickinfinity.com</li>
+              <li>Email: infobrickinfinity@gmail.com</li>
               <li>Phone: +91-8989601701</li>
               <li>Location: India</li>
+              <li>
+                Instagram:{" "}
+                <a
+                  href="https://instagarm.com/brick_infinity"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition-colors duration-200"
+                >
+                  @brick_infinity
+                </a>
+              </li>
+              <li>
+                Facebook:{" "}
+                <a
+                  href="https://facebook.com/brickinfinity"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition-colors duration-200"
+                >
+                  brickinfinity
+                </a>
+              </li>
             </ul>
           </div>
 

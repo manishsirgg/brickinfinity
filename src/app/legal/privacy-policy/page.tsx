@@ -49,7 +49,7 @@ export default function PrivacyPolicyPage() {
       <p>
         You may request access, correction, or deletion
         of your personal data by contacting us at
-        support@brickinfinity.com.
+        infobrickinfinity@gmail.com.
       </p>
     </main>
   );
