@@ -375,7 +375,9 @@ if (existing?.document_url) {
       .eq("user_id", sessionUser.id);
 
     setMessage(
-      `${type.replace("_", " ")} uploaded for ${upgradeTarget} verification.`
+      upgradeTarget === "admin"
+        ? `${type.replace("_", " ")} uploaded. Admin access request recorded and sent for manual review after KYC approval.`
+        : `${type.replace("_", " ")} uploaded for seller verification.`
     );
     fetchProfile();
 

@@ -150,17 +150,17 @@ export default function AdminKYCPage() {
     )
 
     if (hasApprovedSelfie && hasApprovedGovtId) {
-      const requestedRole =
+      const requestedAdmin =
         doc?.users?.seller_status === "pending_admin"
-          ? "admin"
-          : "seller"
 
       await supabase
         .from("users")
         .update({
           kyc_status: "approved",
-          role: requestedRole,
-          seller_status: "active"
+          role: "seller",
+          seller_status: requestedAdmin
+            ? "admin_review_required"
+            : "active"
         })
         .eq("id", doc.user_id)
 

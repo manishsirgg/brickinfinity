@@ -65,6 +65,7 @@ BEGIN
     EXECUTE format('ALTER TYPE public.%I ADD VALUE IF NOT EXISTS ''basic''', status_udt);
     EXECUTE format('ALTER TYPE public.%I ADD VALUE IF NOT EXISTS ''pending_seller''', status_udt);
     EXECUTE format('ALTER TYPE public.%I ADD VALUE IF NOT EXISTS ''pending_admin''', status_udt);
+    EXECUTE format('ALTER TYPE public.%I ADD VALUE IF NOT EXISTS ''admin_review_required''', status_udt);
     EXECUTE format('ALTER TYPE public.%I ADD VALUE IF NOT EXISTS ''active''', status_udt);
   END IF;
 END
