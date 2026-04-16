@@ -86,8 +86,10 @@ export default function MyListingsPage() {
         query = query.eq("status",statusFilter);
       }
 
-      if(search){
-        query = query.ilike("property_type",`%${search}%`);
+      const searchValue = search.trim();
+
+      if(searchValue){
+        query = query.ilike("property_type",`%${searchValue}%`);
       }
 
       const {data,count,error} = await query;
