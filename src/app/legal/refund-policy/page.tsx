@@ -18,7 +18,7 @@ export default function RefundPolicyPage() {
 
       <p>
         For billing inquiries, contact:
-        support@brickinfinity.com
+        infobrickinfinity@gmail.com
       </p>
     </main>
   );

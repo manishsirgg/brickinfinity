@@ -2,6 +2,8 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Script from "next/script";
+import WhatsAppFloatingButton from "@/components/WhatsAppFloatingButton";
 
 const baseUrl = "https://brickinfinity.com";
 
@@ -128,8 +130,27 @@ export default function RootLayout({
         {/* PAGE CONTENT */}
         <main className="flex-1 w-full">{children}</main>
 
+        {/* FLOATING WHATSAPP CTA */}
+        <WhatsAppFloatingButton />
+
         {/* FOOTER */}
         <Footer />
+
+        {/* OneSignal Push Notifications */}
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          defer
+        />
+        <Script id="onesignal-init" strategy="afterInteractive">
+          {`
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            OneSignalDeferred.push(async function(OneSignal) {
+              await OneSignal.init({
+                appId: "f1b16fd2-3076-4c6d-b360-893c7841d0fc",
+              });
+            });
+          `}
+        </Script>
       </body>
     </html>
   );

@@ -18,6 +18,11 @@ export const NAV_ITEMS: NavItem[] = [
     roles: [USER_ROLES.BUYER, USER_ROLES.SELLER, USER_ROLES.ADMIN],
   },
   {
+    label: "Blogs",
+    href: "/blogs",
+    roles: [USER_ROLES.BUYER, USER_ROLES.SELLER, USER_ROLES.ADMIN],
+  },
+  {
     label: "Become a Seller",
     href: "/profile",
     roles: [USER_ROLES.BUYER],
