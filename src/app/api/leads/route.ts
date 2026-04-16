@@ -13,8 +13,7 @@ export async function POST(req: Request) {
       name,
       phone,
       email,
-      message,
-      source
+      message
     } = body;
 
     /* ================= BASIC VALIDATION ================= */
