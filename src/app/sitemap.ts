@@ -1,19 +1,27 @@
 import { createClient } from "@supabase/supabase-js";
 import { MetadataRoute } from "next";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = "https://brickinfinity.com";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // Fetch all active properties
-  const { data: properties } = await supabase
-    .from("properties")
-    .select("slug, updated_at")
-    .eq("status", "active");
+  let properties:
+    | {
+        slug: string;
+        updated_at: string | null;
+      }[]
+    | null = null;
+
+  if (supabaseUrl && supabaseAnonKey) {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const { data } = await supabase
+      .from("properties")
+      .select("slug, updated_at")
+      .eq("status", "active");
+    properties = data;
+  }
 
   const propertyUrls =
     properties?.map((property) => ({

@@ -125,6 +125,30 @@ export default function RegisterPage() {
         );
       }
 
+      const { error: profileError } = await supabase
+        .from("users")
+        .upsert(
+          {
+            user_id: data.user.id,
+            full_name: form.fullName.trim(),
+            email: cleanEmail,
+            phone: form.phone.trim(),
+            whatsapp_number: form.whatsapp.trim(),
+            role: "buyer",
+            kyc_status: "not_submitted",
+            seller_status: "basic",
+          },
+          {
+            onConflict: "user_id",
+          }
+        );
+
+      if (profileError) {
+        throw new Error(
+          profileError.message || "Failed to initialize user profile."
+        );
+      }
+
       setStatus("success");
 
       setTimeout(() => {
