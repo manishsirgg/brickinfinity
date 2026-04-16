@@ -150,12 +150,16 @@ export default function AdminKYCPage() {
     )
 
     if (hasApprovedSelfie && hasApprovedGovtId) {
+      const requestedRole =
+        doc?.users?.seller_status === "pending_admin"
+          ? "admin"
+          : "seller"
 
       await supabase
         .from("users")
         .update({
           kyc_status: "approved",
-          role: "seller",
+          role: requestedRole,
           seller_status: "active"
         })
         .eq("id", doc.user_id)
@@ -209,6 +213,21 @@ export default function AdminKYCPage() {
 
     if (error) {
       console.error("Reject error:", error)
+      setProcessing(false)
+      return
+    }
+
+    const { error: userUpdateError } = await supabase
+      .from("users")
+      .update({
+        kyc_status: "rejected",
+        role: "buyer",
+        seller_status: "basic"
+      })
+      .eq("id", doc.user_id)
+
+    if (userUpdateError) {
+      console.error("User KYC reject sync error:", userUpdateError)
       setProcessing(false)
       return
     }
