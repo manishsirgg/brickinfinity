@@ -267,7 +267,6 @@ export default async function RentPage({
               <Link
                 key={i}
                 href={buildPageUrl(i + 1)}
-                data-testid={`rent-pagination-${i + 1}`}
                 className={`px-4 py-2 rounded-md text-sm border transition ${
                   currentPage === i + 1
                     ? "bg-primary text-white border-primary"

@@ -97,7 +97,6 @@ export default function HeroSearch() {
   return (
     <form
       onSubmit={handleSearch}
-      data-testid="hero-search-form"
       className="bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.08)] border border-gray-200 p-8 space-y-6"
     >
 
@@ -120,7 +119,6 @@ export default function HeroSearch() {
           <button
             type="button"
             onClick={() => setListingType("Sale")}
-            data-testid="hero-search-buy-toggle"
             className={`relative z-10 flex-1 py-2 text-sm font-semibold ${
               listingType === "Sale" ? "text-white" : "text-gray-700"
             }`}
@@ -131,7 +129,6 @@ export default function HeroSearch() {
           <button
             type="button"
             onClick={() => setListingType("Rent")}
-            data-testid="hero-search-rent-toggle"
             className={`relative z-10 flex-1 py-2 text-sm font-semibold ${
               listingType === "Rent" ? "text-white" : "text-gray-700"
             }`}
@@ -150,7 +147,6 @@ export default function HeroSearch() {
         {/* STATE */}
         <select
           value={stateId}
-          data-testid="hero-search-state"
           onChange={(e)=>{
             setStateId(e.target.value);
             setCityId("");
@@ -169,7 +165,6 @@ export default function HeroSearch() {
         {/* CITY */}
         <select
           value={cityId}
-          data-testid="hero-search-city"
           disabled={!stateId}
           onChange={(e)=>setCityId(e.target.value)}
           className="input"
@@ -186,7 +181,6 @@ export default function HeroSearch() {
         {/* PROPERTY TYPE */}
         <select
           value={propertyType}
-          data-testid="hero-search-property-type"
           onChange={(e) => setPropertyType(e.target.value)}
           className="input"
         >
@@ -201,7 +195,6 @@ export default function HeroSearch() {
         {/* BEDROOMS */}
         <select
           value={bedrooms}
-          data-testid="hero-search-bedrooms"
           onChange={(e) => setBedrooms(e.target.value)}
           className="input"
         >
@@ -216,7 +209,6 @@ export default function HeroSearch() {
         <input
           type="number"
           placeholder="Min Price"
-          data-testid="hero-search-min-price"
           value={minPrice}
           onChange={(e) => setMinPrice(e.target.value)}
           className="input"
@@ -225,7 +217,6 @@ export default function HeroSearch() {
         <input
           type="number"
           placeholder="Max Price"
-          data-testid="hero-search-max-price"
           value={maxPrice}
           onChange={(e) => setMaxPrice(e.target.value)}
           className="input"
@@ -235,7 +226,6 @@ export default function HeroSearch() {
 
       <button
         type="submit"
-        data-testid="hero-search-submit"
         className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-semibold transition shadow-md"
       >
         Search Properties
