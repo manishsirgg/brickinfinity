@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 
 const supabase = createClient()
@@ -13,7 +13,7 @@ export default function ModerationHistory({
 
 const [logs,setLogs] = useState<any[]>([])
 
-async function fetchLogs(){
+const fetchLogs = useCallback(async()=>{
 
 const {data} = await supabase
 .from("moderation_logs")
@@ -26,11 +26,11 @@ users(full_name)
 
 setLogs(data || [])
 
-}
+},[entityId])
 
 useEffect(()=>{
 if(entityId) fetchLogs()
-},[entityId])
+},[entityId,fetchLogs])
 
 if(!logs.length){
 return <p className="text-sm text-muted">No moderation history</p>
