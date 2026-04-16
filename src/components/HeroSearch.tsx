@@ -15,8 +15,8 @@ export default function HeroSearch() {
   const [states,setStates] = useState<any[]>([]);
   const [cities,setCities] = useState<any[]>([]);
 
-  const [stateName,setStateName] = useState("");
-  const [cityName,setCityName] = useState("");
+  const [stateId,setStateId] = useState("");
+  const [cityId,setCityId] = useState("");
 
   const [propertyType, setPropertyType] = useState("");
   const [minPrice, setMinPrice] = useState("");
@@ -28,8 +28,13 @@ export default function HeroSearch() {
   },[]);
 
   useEffect(()=>{
-    if(stateName) loadCities();
-  },[stateName]);
+    if(stateId) {
+      loadCities();
+      return;
+    }
+
+    setCities([]);
+  },[stateId]);
 
   async function loadStates(){
     const { data } =
@@ -46,10 +51,18 @@ export default function HeroSearch() {
       await supabase
         .from("cities")
         .select("id,name")
-        .eq("state_id", stateName)
+        .eq("state_id", stateId)
         .order("name");
 
     if(data) setCities(data);
+  }
+
+  function getSelectedName(
+    items: Array<{ id: string; name: string }>,
+    id: string
+  ) {
+    if (!id) return "";
+    return items.find((item) => item.id === id)?.name || "";
   }
 
   const handleSearch = (e: React.FormEvent) => {
@@ -60,10 +73,13 @@ export default function HeroSearch() {
       return;
     }
 
+    const selectedStateName = getSelectedName(states, stateId);
+    const selectedCityName = getSelectedName(cities, cityId);
+
     const params = new URLSearchParams();
 
-    if (stateName) params.set("state", stateName);
-    if (cityName) params.set("city", cityName);
+    if (selectedStateName) params.set("state", selectedStateName);
+    if (selectedCityName) params.set("city", selectedCityName);
     if (propertyType) params.set("propertyType", propertyType);
     if (minPrice) params.set("minPrice", minPrice);
     if (maxPrice) params.set("maxPrice", maxPrice);
@@ -130,17 +146,17 @@ export default function HeroSearch() {
 
         {/* STATE */}
         <select
-          value={stateName}
+          value={stateId}
           onChange={(e)=>{
-            setStateName(e.target.value);
-            setCityName("");
+            setStateId(e.target.value);
+            setCityId("");
           }}
           className="input"
         >
           <option value="">Select State</option>
 
           {states.map((s)=>(
-            <option key={s.id} value={s.name}>
+            <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
@@ -148,15 +164,15 @@ export default function HeroSearch() {
 
         {/* CITY */}
         <select
-          value={cityName}
-          disabled={!stateName}
-          onChange={(e)=>setCityName(e.target.value)}
+          value={cityId}
+          disabled={!stateId}
+          onChange={(e)=>setCityId(e.target.value)}
           className="input"
         >
           <option value="">Select City</option>
 
           {cities.map((c)=>(
-            <option key={c.id} value={c.name}>
+            <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}

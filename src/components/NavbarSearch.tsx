@@ -11,7 +11,9 @@ export default function NavbarSearch() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
 
-    const value = query.trim();
+    const value = query
+      .replace(/\s+/g, " ")
+      .trim();
 
     if (!value) return;
 
