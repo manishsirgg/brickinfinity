@@ -44,19 +44,6 @@ export default function HeroSearch() {
     if(data) setCities(data);
   }
 
-  useEffect(()=>{
-    loadStates();
-  },[]);
-
-  useEffect(()=>{
-    if(stateId) {
-      loadCities();
-      return;
-    }
-
-    setCities([]);
-  },[stateId]);
-
   function getSelectedName(
     items: Array<{ id: string; name: string }>,
     id: string
@@ -93,6 +80,19 @@ export default function HeroSearch() {
 
     router.push(url);
   };
+
+  useEffect(()=>{
+    loadStates();
+  },[]);
+
+  useEffect(()=>{
+    if(stateId) {
+      loadCities();
+      return;
+    }
+
+    setCities([]);
+  },[stateId]);
 
   return (
     <form
