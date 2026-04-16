@@ -11,7 +11,9 @@ export default function NavbarSearch() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
 
-    const value = query.trim();
+    const value = query
+      .replace(/\s+/g, " ")
+      .trim();
 
     if (!value) return;
 
@@ -26,6 +28,7 @@ export default function NavbarSearch() {
   return (
     <form
       onSubmit={handleSearch}
+      data-testid="navbar-search-form"
       className="w-full max-w-md"
     >
 
@@ -34,6 +37,7 @@ export default function NavbarSearch() {
         <input
           type="text"
           placeholder="Search city, locality, property type..."
+          data-testid="navbar-search-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full bg-gray-100 border border-gray-200 rounded-full px-5 py-2.5 text-sm focus:bg-white focus:border-gray-300 focus:ring-2 focus:ring-red-500/20 outline-none transition"
@@ -41,6 +45,7 @@ export default function NavbarSearch() {
 
         <button
           type="submit"
+          data-testid="navbar-search-submit"
           className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600 transition"
         >
           🔍

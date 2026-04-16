@@ -22,12 +22,29 @@ type Props = {
 const pageSize = 9;
 
 function toNumber(value?: string) {
-  const num = Number(value);
+  if (value === undefined) return undefined;
+
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const num = Number(trimmed);
   return isNaN(num) ? undefined : num;
 }
 
 function cleanString(value?: string) {
   return value?.trim() || undefined;
+}
+
+function sanitizeSearchTerm(value?: string) {
+  if (!value) return undefined;
+
+  const cleaned = value
+    .replace(/[,%()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+
+  return cleaned || undefined;
 }
 
 /* ================= SEO ================= */
@@ -66,7 +83,7 @@ export default async function RentPage({
 
   const state = cleanString(searchParams.state);
   const city = cleanString(searchParams.city);
-  const keyword = cleanString(searchParams.keyword);
+  const keyword = sanitizeSearchTerm(cleanString(searchParams.keyword));
 
   const minPrice = toNumber(searchParams.minPrice);
   const maxPrice = toNumber(searchParams.maxPrice);
@@ -250,6 +267,7 @@ export default async function RentPage({
               <Link
                 key={i}
                 href={buildPageUrl(i + 1)}
+                data-testid={`rent-pagination-${i + 1}`}
                 className={`px-4 py-2 rounded-md text-sm border transition ${
                   currentPage === i + 1
                     ? "bg-primary text-white border-primary"

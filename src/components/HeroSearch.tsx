@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -15,23 +15,15 @@ export default function HeroSearch() {
   const [states,setStates] = useState<any[]>([]);
   const [cities,setCities] = useState<any[]>([]);
 
-  const [stateName,setStateName] = useState("");
-  const [cityName,setCityName] = useState("");
+  const [stateId,setStateId] = useState("");
+  const [cityId,setCityId] = useState("");
 
   const [propertyType, setPropertyType] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [bedrooms, setBedrooms] = useState("");
 
-  useEffect(()=>{
-    loadStates();
-  },[]);
-
-  useEffect(()=>{
-    if(stateName) loadCities();
-  },[stateName]);
-
-  async function loadStates(){
+  const loadStates = useCallback(async()=>{
     const { data } =
       await supabase
         .from("states")
@@ -39,17 +31,38 @@ export default function HeroSearch() {
         .order("name");
 
     if(data) setStates(data);
-  }
+  },[]);
 
-  async function loadCities(){
+  const loadCities = useCallback(async()=>{
     const { data } =
       await supabase
         .from("cities")
         .select("id,name")
-        .eq("state_id", stateName)
+        .eq("state_id", stateId)
         .order("name");
 
     if(data) setCities(data);
+  },[stateId]);
+
+  useEffect(()=>{
+    loadStates();
+  },[loadStates]);
+
+  useEffect(()=>{
+    if(stateId) {
+      loadCities();
+      return;
+    }
+
+    setCities([]);
+  },[stateId, loadCities]);
+
+  function getSelectedName(
+    items: Array<{ id: string; name: string }>,
+    id: string
+  ) {
+    if (!id) return "";
+    return items.find((item) => item.id === id)?.name || "";
   }
 
   const handleSearch = (e: React.FormEvent) => {
@@ -60,10 +73,13 @@ export default function HeroSearch() {
       return;
     }
 
+    const selectedStateName = getSelectedName(states, stateId);
+    const selectedCityName = getSelectedName(cities, cityId);
+
     const params = new URLSearchParams();
 
-    if (stateName) params.set("state", stateName);
-    if (cityName) params.set("city", cityName);
+    if (selectedStateName) params.set("state", selectedStateName);
+    if (selectedCityName) params.set("city", selectedCityName);
     if (propertyType) params.set("propertyType", propertyType);
     if (minPrice) params.set("minPrice", minPrice);
     if (maxPrice) params.set("maxPrice", maxPrice);
@@ -81,6 +97,7 @@ export default function HeroSearch() {
   return (
     <form
       onSubmit={handleSearch}
+      data-testid="hero-search-form"
       className="bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.08)] border border-gray-200 p-8 space-y-6"
     >
 
@@ -103,6 +120,7 @@ export default function HeroSearch() {
           <button
             type="button"
             onClick={() => setListingType("Sale")}
+            data-testid="hero-search-buy-toggle"
             className={`relative z-10 flex-1 py-2 text-sm font-semibold ${
               listingType === "Sale" ? "text-white" : "text-gray-700"
             }`}
@@ -113,6 +131,7 @@ export default function HeroSearch() {
           <button
             type="button"
             onClick={() => setListingType("Rent")}
+            data-testid="hero-search-rent-toggle"
             className={`relative z-10 flex-1 py-2 text-sm font-semibold ${
               listingType === "Rent" ? "text-white" : "text-gray-700"
             }`}
@@ -130,17 +149,18 @@ export default function HeroSearch() {
 
         {/* STATE */}
         <select
-          value={stateName}
+          value={stateId}
+          data-testid="hero-search-state"
           onChange={(e)=>{
-            setStateName(e.target.value);
-            setCityName("");
+            setStateId(e.target.value);
+            setCityId("");
           }}
           className="input"
         >
           <option value="">Select State</option>
 
           {states.map((s)=>(
-            <option key={s.id} value={s.name}>
+            <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
@@ -148,15 +168,16 @@ export default function HeroSearch() {
 
         {/* CITY */}
         <select
-          value={cityName}
-          disabled={!stateName}
-          onChange={(e)=>setCityName(e.target.value)}
+          value={cityId}
+          data-testid="hero-search-city"
+          disabled={!stateId}
+          onChange={(e)=>setCityId(e.target.value)}
           className="input"
         >
           <option value="">Select City</option>
 
           {cities.map((c)=>(
-            <option key={c.id} value={c.name}>
+            <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
@@ -165,6 +186,7 @@ export default function HeroSearch() {
         {/* PROPERTY TYPE */}
         <select
           value={propertyType}
+          data-testid="hero-search-property-type"
           onChange={(e) => setPropertyType(e.target.value)}
           className="input"
         >
@@ -179,6 +201,7 @@ export default function HeroSearch() {
         {/* BEDROOMS */}
         <select
           value={bedrooms}
+          data-testid="hero-search-bedrooms"
           onChange={(e) => setBedrooms(e.target.value)}
           className="input"
         >
@@ -193,6 +216,7 @@ export default function HeroSearch() {
         <input
           type="number"
           placeholder="Min Price"
+          data-testid="hero-search-min-price"
           value={minPrice}
           onChange={(e) => setMinPrice(e.target.value)}
           className="input"
@@ -201,6 +225,7 @@ export default function HeroSearch() {
         <input
           type="number"
           placeholder="Max Price"
+          data-testid="hero-search-max-price"
           value={maxPrice}
           onChange={(e) => setMaxPrice(e.target.value)}
           className="input"
@@ -210,6 +235,7 @@ export default function HeroSearch() {
 
       <button
         type="submit"
+        data-testid="hero-search-submit"
         className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-semibold transition shadow-md"
       >
         Search Properties
