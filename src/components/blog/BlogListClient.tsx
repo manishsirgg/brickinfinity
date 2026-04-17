@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BlogPost, readBlogPosts } from "./BlogStorage";
 
@@ -15,12 +14,6 @@ export default function BlogListClient() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-[var(--color-dark)]">Blogs</h1>
-        <Link
-          href="/blogs/write"
-          className="rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 transition"
-        >
-          Write a Blog
-        </Link>
       </div>
 
       {posts.length === 0 ? (

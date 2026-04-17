@@ -196,6 +196,49 @@ export default function AdminUsersPage() {
     setProcessing(false)
   }
 
+  async function grantAdmin(user: any) {
+    if (user.kyc_status !== "approved") {
+      alert("User KYC must be approved first")
+      return
+    }
+
+    const { data } = await supabase.auth.getUser()
+    const adminId = data.user?.id
+
+    if (!adminId) {
+      alert("Session expired")
+      return
+    }
+
+    setProcessing(true)
+
+    const { error } = await supabase
+      .from("users")
+      .update({
+        role: "admin",
+        seller_status: "active"
+      })
+      .eq("id", user.id)
+
+    if (error) {
+      console.error(error)
+      setProcessing(false)
+      return
+    }
+
+    await logAction(
+      adminId,
+      "user",
+      user.id,
+      "grant_admin",
+      "Admin granted elevated access"
+    )
+
+    updateLocalUser({ ...user, role: "admin", seller_status: "active" })
+
+    setProcessing(false)
+  }
+
   /* ================= UI ================= */
 
   return (
@@ -292,6 +335,12 @@ export default function AdminUsersPage() {
                 Seller Status: {selected.seller_status}
               </div>
 
+              {selected.seller_status === "admin_review_required" && (
+                <div className="mb-3 inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase text-red-700 ring-2 ring-red-300">
+                  Admin upgrade requested
+                </div>
+              )}
+
               <div className="mb-2 text-sm">
                 Reputation Score: {selected.reputation_score}
               </div>
@@ -336,6 +385,18 @@ export default function AdminUsersPage() {
                   className="bg-gray-700 disabled:opacity-50 text-white px-4 py-2 rounded"
                 >
                   Demote Seller
+                </button>
+
+                <button
+                  disabled={
+                    processing ||
+                    selected.role === "admin" ||
+                    selected.seller_status !== "admin_review_required"
+                  }
+                  onClick={() => grantAdmin(selected)}
+                  className="bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded"
+                >
+                  Approve Admin Access
                 </button>
 
               </div>
