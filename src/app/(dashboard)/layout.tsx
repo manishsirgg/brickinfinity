@@ -18,11 +18,17 @@ export default async function DashboardLayout({
 
   /* ROLE CHECK */
 
-  if (user.role !== USER_ROLES.SELLER) {
+  const canUseDashboard =
+    user.role === USER_ROLES.SELLER || user.role === USER_ROLES.ADMIN;
+
+  if (!canUseDashboard) {
     redirect("/profile?upgrade=seller");
   }
 
   /* KYC STATUS */
+  if (user.role === USER_ROLES.ADMIN) {
+    return <>{children}</>;
+  }
 
   if (user.kycStatus === "pending") {
     redirect("/profile?kyc=pending");

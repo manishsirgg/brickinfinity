@@ -28,6 +28,7 @@ const [selectedState,setSelectedState] = useState("");
   const [error,setError] = useState("");
   const [success,setSuccess] = useState("");
   const [submitting,setSubmitting] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<"buyer" | "seller" | "admin">("seller");
 
   const [images,setImages] = useState<File[]>([]);
   const [dragIndex,setDragIndex] = useState<number | null>(null);
@@ -58,7 +59,7 @@ const [selectedState,setSelectedState] = useState("");
   cityId:""
 });
 
-  useEffect(()=>{ loadStates(); },[]);
+  useEffect(()=>{ loadStates(); loadCurrentUserRole(); },[]);
 useEffect(()=>{ if(selectedState) loadCities(); },[selectedState]);
 
 async function loadStates(){
@@ -69,6 +70,22 @@ async function loadStates(){
       .order("name");
 
   if(data) setStates(data);
+}
+
+async function loadCurrentUserRole() {
+  const { data: authData } = await supabase.auth.getUser();
+  const authId = authData.user?.id;
+  if (!authId) return;
+
+  const { data } = await supabase
+    .from("users")
+    .select("role")
+    .eq("user_id", authId)
+    .maybeSingle();
+
+  if (data?.role === "admin" || data?.role === "seller" || data?.role === "buyer") {
+    setCurrentUserRole(data.role);
+  }
 }
 
   async function loadCities(){
@@ -230,6 +247,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
     if(!session) throw new Error("Session expired");
 
     const profileId = await getProfileId(session.user.id);
+    const isAdmin = currentUserRole === "admin";
     const localityId = await ensureLocality();
     const slug = generateSlug(form.title);
 
@@ -262,9 +280,10 @@ const handleSubmit = async (e:React.FormEvent)=>{
           city_id: form.cityId,
           locality_id: localityId,
           slug,
-          status: "draft",
-ownership_verified: false,
-verification_status: "awaiting_ownership"
+          status: isAdmin ? "active" : "draft",
+ownership_verified: isAdmin,
+verification_status: isAdmin ? "approved" : "awaiting_ownership",
+approved_at: isAdmin ? new Date().toISOString() : null
         })
         .select()
         .single();
@@ -314,20 +333,27 @@ verification_status: "awaiting_ownership"
         .from("properties")
         .update({
           verification_status: "media_failed",
-          status: "pending"
+          status: currentUserRole === "admin" ? "active" : "pending"
         })
         .eq("id", property.id);
     }
 
     /* ===== SUCCESS ===== */
 
-    setSuccess("Property created successfully. Next step: Upload ownership document.");
+    if (isAdmin) {
+      setSuccess("Property published successfully. As an admin, your listing is now live.");
+      setTimeout(()=>{
+        router.push("/dashboard/my-listings");
+      },1200);
+    } else {
+      setSuccess("Property created successfully. Next step: Upload ownership document.");
 
-sessionStorage.setItem("pendingOwnershipPropertyId", property.id);
+      sessionStorage.setItem("pendingOwnershipPropertyId", property.id);
 
-setTimeout(()=>{
-  router.push(`/dashboard/property/${property.id}/ownership`);
-},1500);
+      setTimeout(()=>{
+        router.push(`/dashboard/property/${property.id}/ownership`);
+      },1500);
+    }
 
   }catch(err:any){
 
@@ -799,18 +825,26 @@ setTimeout(()=>{
                     }}
                   >
 
-                    Drag & drop images here
+                    <p className="text-base font-medium">Upload Property Images</p>
+                    <p className="text-xs text-gray-500">Drag & drop images here or browse files.</p>
 
                     <input
                       type="file"
                       multiple
                       accept="image/*"
-                      className="mt-4"
+                      className="sr-only"
+                      id="property-image-upload"
                       onChange={(e)=>{
                         const files=Array.from(e.target.files || []);
                         addImages(files);
                       }}
                     />
+                    <label
+                      htmlFor="property-image-upload"
+                      className="mt-4 inline-flex cursor-pointer items-center rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                    >
+                      Choose Images
+                    </label>
 
                   </div>
 
@@ -857,19 +891,27 @@ setTimeout(()=>{
                     </h3>
 
                     {!video && (
+                      <>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          className="sr-only"
+                          id="property-video-upload"
+                          onChange={(e)=>{
 
-                      <input
-                        type="file"
-                        accept="video/*"
-                        className="input-premium"
-                        onChange={(e)=>{
+                            const file=e.target.files?.[0];
 
-                          const file=e.target.files?.[0];
+                            if(file) handleVideoSelect(file);
 
-                          if(file) handleVideoSelect(file);
-
-                        }}
-                      />
+                          }}
+                        />
+                        <label
+                          htmlFor="property-video-upload"
+                          className="inline-flex cursor-pointer items-center rounded-full bg-gray-900 px-5 py-2 text-sm font-semibold text-white hover:bg-black"
+                        >
+                          Upload Property Video
+                        </label>
+                      </>
 
                     )}
 

@@ -49,12 +49,20 @@ export default async function AdminLayout({
               Listings
             </Link>
 
+            <Link href="/dashboard/add-property" className="hover:underline">
+              Create Property
+            </Link>
+
             <Link href="/admin/reports" className="hover:underline">
               Reports
             </Link>
 
             <Link href="/admin/users" className="hover:underline">
               Users
+            </Link>
+
+            <Link href="/admin/blogs" className="hover:underline">
+              Blogs
             </Link>
 
             <Link href="/admin/logs" className="hover:underline">
