@@ -77,11 +77,6 @@ export default function Footer() {
                   Blogs
                 </Link>
               </li>
-              <li>
-                <Link href="/blogs/write" className="hover:text-white transition-colors duration-200">
-                  Write a Blog
-                </Link>
-              </li>
             </ul>
           </div>
 

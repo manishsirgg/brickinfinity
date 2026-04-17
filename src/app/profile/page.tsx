@@ -36,6 +36,7 @@ interface DocumentRow {
   document_type: DocumentType;
   document_url: string;
   status: string;
+  rejection_reason?: string | null;
 }
 
 /* ================= PAGE ================= */
@@ -68,6 +69,7 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [upgradeTarget, setUpgradeTarget] =
     useState<"seller" | "admin">("seller");
+  const [kycRejectionReason, setKycRejectionReason] = useState<string | null>(null);
 
   useEffect(() => {
 
@@ -157,9 +159,11 @@ export default function ProfilePage() {
 
   const { data: docs } = await supabase
     .from("documents")
-    .select("id, document_type, document_url, status")
+    .select("id, document_type, document_url, status, rejection_reason")
     .eq("user_id", data.id);
     setDocumentsList(docs || []);
+    const rejectionDoc = (docs || []).find((doc: any) => doc.status === "rejected" && doc.rejection_reason);
+    setKycRejectionReason(rejectionDoc?.rejection_reason || null);
 
   const map: Record<DocumentType, DocumentRow | null> = {
     aadhar: null,
@@ -402,6 +406,10 @@ const hasSelfie = documentsList.some(
 );
 
 const kycComplete = hasGovtId && hasSelfie;
+const approvalTarget =
+  profile?.role === "admin" || profile?.seller_status === "admin_review_required"
+    ? "admin"
+    : "seller";
 
   if (loading)
     return (
@@ -476,11 +484,24 @@ const kycComplete = hasGovtId && hasSelfie;
                 )}
               </div>
 
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarUpload}
-              />
+              <div className="space-y-2">
+                <input
+                  id="avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleAvatarUpload}
+                />
+                <label
+                  htmlFor="avatar-upload"
+                  className="inline-flex cursor-pointer items-center rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+                >
+                  {uploadingAvatar ? "Uploading..." : "Choose Profile Image"}
+                </label>
+                {!uploadingAvatar && (
+                  <p className="text-xs text-gray-500">PNG/JPG recommended.</p>
+                )}
+              </div>
 
             </div>
 
@@ -510,38 +531,56 @@ const kycComplete = hasGovtId && hasSelfie;
           </Card>
 
           <Card className="p-6 space-y-3 border-2 border-dashed">
+            <h2 className="text-lg font-semibold">
+              Application Status
+            </h2>
 
-  <h2 className="text-lg font-semibold">
-    Seller Verification Status
-  </h2>
+            {profile?.kyc_status === "pending" && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                Your documents have been uploaded and are awaiting admin approval.
+              </p>
+            )}
 
-  {kycComplete ? (
-    <p className="text-green-600 text-sm">
-      ✔ Required documents uploaded. Awaiting admin approval.
-    </p>
-  ) : (
-    <div className="text-sm space-y-1">
+            {profile?.kyc_status === "approved" && approvalTarget === "seller" && (
+              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                Your seller application has been approved. You can now list properties.
+              </p>
+            )}
 
-      {!hasGovtId && (
-        <p className="text-red-600">
-          • Upload any ONE government ID (Aadhaar / Passport / Driving License)
-        </p>
-      )}
+            {profile?.kyc_status === "approved" && approvalTarget === "admin" && (
+              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                Your admin application has been approved. You now have admin access.
+              </p>
+            )}
 
-      {!hasSelfie && (
-        <p className="text-red-600">
-          • Upload Selfie for identity confirmation
-        </p>
-      )}
+            {profile?.kyc_status === "rejected" && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
+                <p>Your application has been rejected.</p>
+                <p>
+                  <span className="font-semibold">Reason for rejection:</span>{" "}
+                  {kycRejectionReason || "No reason provided yet. Please contact support."}
+                </p>
+              </div>
+            )}
 
-      <p className="text-gray-500 pt-1">
-        Seller access unlocks after both are approved.
-      </p>
+            {profile?.kyc_status !== "pending" &&
+              profile?.kyc_status !== "approved" &&
+              profile?.kyc_status !== "rejected" && (
+                <div className="text-sm space-y-1">
+                  {!hasGovtId && (
+                    <p className="text-red-600">
+                      • Upload any ONE government ID (Aadhaar / Passport / Driving License)
+                    </p>
+                  )}
 
-    </div>
-  )}
-
-</Card>
+                  {!hasSelfie && (
+                    <p className="text-red-600">
+                      • Upload Selfie for identity confirmation
+                    </p>
+                  )}
+                </div>
+              )}
+          </Card>
 
           {/* KYC */}
 
@@ -550,6 +589,10 @@ const kycComplete = hasGovtId && hasSelfie;
 	            <h2 className="text-lg font-semibold">
 	              Seller Verification
 	            </h2>
+
+              {uploadingKyc && (
+                <p className="text-sm text-blue-600">Uploading document... Please wait.</p>
+              )}
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">
@@ -581,6 +624,18 @@ const kycComplete = hasGovtId && hasSelfie;
               ).map((type)=>{
 
                 const doc = documents[type];
+                const labelMap: Record<DocumentType, string> = {
+                  aadhar: "Upload Aadhaar",
+                  passport: "Upload Passport",
+                  driving_license: "Upload Driving License",
+                  selfie: "Upload Selfie",
+                };
+                const helperMap: Record<DocumentType, string> = {
+                  aadhar: "Upload ID Proof",
+                  passport: "Upload ID Proof",
+                  driving_license: "Upload ID Proof",
+                  selfie: "Upload Face Verification Selfie",
+                };
 
                 return (
                   <div
@@ -613,14 +668,23 @@ const kycComplete = hasGovtId && hasSelfie;
 )}
 
                     <input
-  type="file"
-  accept={type === "selfie" ? "image/*" : "image/*,.pdf"}
-  disabled={uploadingKyc}
+                      id={`kyc-upload-${type}`}
+                      type="file"
+                      accept={type === "selfie" ? "image/*" : "image/*,.pdf"}
+                      disabled={uploadingKyc}
+                      className="sr-only"
                       onChange={(e:any)=>{
                         const file=e.target.files?.[0];
                         if(file) uploadKycDocument(file,type);
                       }}
                     />
+                    <label
+                      htmlFor={`kyc-upload-${type}`}
+                      className="inline-flex cursor-pointer items-center rounded-full bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {uploadingKyc ? "Uploading..." : labelMap[type]}
+                    </label>
+                    <p className="text-xs text-gray-500">{helperMap[type]}</p>
 
                   </div>
                 )

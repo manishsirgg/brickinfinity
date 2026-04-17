@@ -165,6 +165,13 @@ export default function AdminDashboard() {
           </div>
         </Link>
 
+        <Link href="/admin/blogs" className="border rounded-xl p-6 hover:bg-gray-50">
+          <div className="text-lg font-semibold">Blogs</div>
+          <div className="text-sm text-gray-500 mt-1">
+            Admin-only publishing
+          </div>
+        </Link>
+
         <Link href="/admin/logs" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Moderation Logs</div>
           <div className="text-sm text-gray-500 mt-1">

@@ -183,9 +183,10 @@ const profileId = userRow.id;
         </select>
 
         <input
+          id="ownership-proof-upload"
           type="file"
           accept=".jpg,.jpeg,.png,.webp,.pdf"
-          className="input-premium mb-4"
+          className="sr-only"
           onChange={(e)=>{
             const f = e.target.files?.[0];
             if(!f) return;
@@ -204,6 +205,15 @@ const profileId = userRow.id;
             );
           }}
         />
+        <label
+          htmlFor="ownership-proof-upload"
+          className="mb-3 inline-flex cursor-pointer items-center rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700"
+        >
+          Upload Ownership Proof
+        </label>
+        <p className="text-xs text-gray-500 mb-4">
+          Accepted: JPG, PNG, WEBP, PDF (max 10MB). {file ? `Selected: ${file.name}` : "No file selected."}
+        </p>
 
         <button
           className="btn-primary"

@@ -57,6 +57,10 @@ export default async function AdminLayout({
               Users
             </Link>
 
+            <Link href="/admin/blogs" className="hover:underline">
+              Blogs
+            </Link>
+
             <Link href="/admin/logs" className="hover:underline">
               Logs
             </Link>

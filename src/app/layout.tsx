@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     siteName: "BrickInfinity",
     images: [
       {
-        url: "/og-image.jpg",
+        url: "/og-default.jpg",
         width: 1200,
         height: 630,
         alt: "BrickInfinity Real Estate Marketplace",
@@ -66,7 +66,7 @@ export const metadata: Metadata = {
     title: "BrickInfinity | Real Estate Marketplace",
     description:
       "Buy, rent, and list properties on a secure and modern real estate platform.",
-    images: ["/og-image.jpg"],
+    images: ["/og-default.jpg"],
   },
 
   robots: {

@@ -15,6 +15,7 @@ export default function AdminKYCPage() {
   const [loadingDoc, setLoadingDoc] = useState(false)
   const [loadingQueue, setLoadingQueue] = useState(true)
   const [processing, setProcessing] = useState(false)
+  const [rejectReason, setRejectReason] = useState("")
 
   /* ================= FETCH QUEUE ================= */
 
@@ -94,6 +95,13 @@ export default function AdminKYCPage() {
     loadDocument(selected.document_url)
 
   }, [selected])
+
+  function getRequestedRole(sellerStatus?: string) {
+    if (sellerStatus === "pending_admin" || sellerStatus === "admin_review_required") {
+      return "admin"
+    }
+    return "seller"
+  }
 
   /* ================= APPROVE ================= */
 
@@ -187,9 +195,11 @@ export default function AdminKYCPage() {
   /* ================= REJECT ================= */
 
   async function reject(doc: any) {
-
-    const reason = prompt("Enter rejection reason")
-    if (!reason) return
+    const reason = rejectReason.trim()
+    if (!reason) {
+      alert("Rejection reason is required.")
+      return
+    }
 
     const { data } = await supabase.auth.getUser()
     const adminId = data.user?.id
@@ -242,6 +252,7 @@ export default function AdminKYCPage() {
 
     setSelected(null)
     setImageUrl(null)
+    setRejectReason("")
 
     await fetchQueue()
 
@@ -308,6 +319,18 @@ export default function AdminKYCPage() {
                   {item.document_type.replace("_", " ")}
                 </div>
 
+                <div className="mt-2">
+                  <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                    getRequestedRole(item.users?.seller_status) === "admin"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-blue-100 text-blue-700"
+                  }`}>
+                    {getRequestedRole(item.users?.seller_status) === "admin"
+                      ? "Applying for Admin"
+                      : "Applying for Seller"}
+                  </span>
+                </div>
+
               </div>
 
             ))}
@@ -348,8 +371,14 @@ export default function AdminKYCPage() {
                   Joined: {new Date(selected.users?.created_at).toLocaleDateString()}
                 </div>
 
-                <div className="text-xs text-gray-400">
-                  Seller Status: {selected.users?.seller_status}
+                <div className="mt-3">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
+                    getRequestedRole(selected.users?.seller_status) === "admin"
+                      ? "bg-red-100 text-red-700 ring-2 ring-red-300"
+                      : "bg-blue-100 text-blue-700 ring-2 ring-blue-200"
+                  }`}>
+                    Requested role: {getRequestedRole(selected.users?.seller_status)}
+                  </span>
                 </div>
 
                 <div className="text-xs text-gray-400 capitalize">
@@ -376,6 +405,19 @@ export default function AdminKYCPage() {
                   Could not load document preview
                 </p>
               )}
+
+              <div className="mt-4 mb-4">
+                <label className="block text-sm font-medium mb-1">
+                  Rejection reason (required if rejecting)
+                </label>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  rows={3}
+                  placeholder="Explain why this document/application is being rejected."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
 
               <div className="flex gap-4">
 
