@@ -49,6 +49,10 @@ export default async function AdminLayout({
               Listings
             </Link>
 
+            <Link href="/dashboard/add-property" className="hover:underline">
+              Create Property
+            </Link>
+
             <Link href="/admin/reports" className="hover:underline">
               Reports
             </Link>

@@ -39,8 +39,6 @@ export default function AdminPropertiesPage() {
           reputation_score
         )
       `)
-      .eq("status","pending")
-      .eq("ownership_verified", true)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
 
@@ -114,7 +112,7 @@ export default function AdminPropertiesPage() {
 
   /* ================= APPROVE ================= */
 
-  async function approve(property: any) {
+  async function publish(property: any) {
 
     if (processing) return
     setProcessing(true)
@@ -130,6 +128,7 @@ export default function AdminPropertiesPage() {
         .from("properties")
         .update({
           status: "active",
+          ownership_verified: true,
           verification_status: "approved",
           rejection_reason: null,
           approved_at: new Date().toISOString()
@@ -140,8 +139,8 @@ export default function AdminPropertiesPage() {
         .from("notifications")
         .insert({
           user_id: property.seller_id,
-          title: "Property Approved",
-          message: "Your property listing is now live.",
+          title: "Property Published",
+          message: "Your property listing is now live by admin action.",
           type: "property"
         })
 
@@ -149,8 +148,8 @@ export default function AdminPropertiesPage() {
         adminId,
         "property",
         property.id,
-        "approve_property",
-        "Property approved"
+        "publish_property",
+        "Property published by admin"
       )
 
       setSelected(null)
@@ -161,8 +160,8 @@ export default function AdminPropertiesPage() {
 
     } catch (err: any) {
 
-      console.error("Approve error >>>", err)
-      alert(err.message || "Approval failed")
+      console.error("Publish error >>>", err)
+      alert(err.message || "Publish failed")
 
     }
 
@@ -238,8 +237,17 @@ export default function AdminPropertiesPage() {
     <div className="max-w-7xl mx-auto p-10">
 
       <h1 className="text-2xl font-semibold mb-8">
-        Property Listing Moderation
+        Property Listing Control
       </h1>
+
+      <div className="mb-6">
+        <Link
+          href="/dashboard/add-property"
+          className="inline-flex items-center rounded bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+        >
+          + Create Property (Admin Direct)
+        </Link>
+      </div>
 
       <div className="grid grid-cols-3 gap-6">
 
@@ -248,13 +256,13 @@ export default function AdminPropertiesPage() {
         <div className="border rounded-xl p-4">
 
           <h2 className="font-semibold mb-4">
-           Listings Awaiting Activation
+           All Listings
           </h2>
 
           {loadingQueue && <p className="text-sm text-gray-500">Loading...</p>}
 
           {!loadingQueue && queue.length === 0 &&
-            <p className="text-gray-500 text-sm">No listings awaiting activation</p>
+            <p className="text-gray-500 text-sm">No listings found</p>
           }
 
           <div className="space-y-2">
@@ -278,6 +286,9 @@ export default function AdminPropertiesPage() {
                 </div>
                 <div className="text-xs text-gray-500">
                   ₹{item.price}
+                </div>
+                <div className="mt-1 text-[11px] uppercase font-semibold text-gray-600">
+                  Status: {item.status}
                 </div>
               </div>
 
@@ -318,6 +329,9 @@ export default function AdminPropertiesPage() {
                 </div>
                 <div className="text-sm text-gray-500">
                   Locality: {selected.localities?.name}
+                </div>
+                <div className="text-sm font-semibold text-gray-700">
+                  Listing Status: {selected.status}
                 </div>
               </div>
 
@@ -374,10 +388,10 @@ export default function AdminPropertiesPage() {
 
                 <button
                   disabled={processing}
-                  onClick={()=>approve(selected)}
+                  onClick={()=>publish(selected)}
                   className="bg-green-600 text-white px-4 py-2 rounded"
                 >
-                  Activate
+                  Publish Now
                 </button>
 
                 <button

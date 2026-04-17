@@ -147,7 +147,14 @@ export default function AdminDashboard() {
         <Link href="/admin/properties" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Property Listings</div>
           <div className="text-sm text-gray-500 mt-1">
-            Ready for Activation: {stats.properties}
+            Total Pending Review: {stats.properties}
+          </div>
+        </Link>
+
+        <Link href="/dashboard/add-property" className="border rounded-xl p-6 hover:bg-gray-50">
+          <div className="text-lg font-semibold">Create Property (Admin)</div>
+          <div className="text-sm text-gray-500 mt-1">
+            Publish directly without ownership approval
           </div>
         </Link>
 
