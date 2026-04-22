@@ -152,7 +152,7 @@ export default async function BuyPage({
     )
     .eq("listing_type", "Sale")
     .eq("status", "active")
-    .eq("ownership_verified", true)
+    .eq("verification_status", "approved")
     .is("deleted_at", null);
 
   /* ===== GLOBAL KEYWORD SEARCH ===== */
