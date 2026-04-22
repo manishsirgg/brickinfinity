@@ -157,8 +157,6 @@ export default async function RentPage({
       { count: "exact" }
     )
     .eq("listing_type", "Rent")
-    .eq("status", "active")
-    .eq("verification_status", "approved")
     .is("deleted_at", null);
 
   /* ===== GLOBAL SEARCH ===== */

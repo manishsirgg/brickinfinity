@@ -35,8 +35,6 @@ const { data: property } = await supabase
     property_images(image_url)
   `)
   .eq("id", id)
-  .eq("status","active")
-  .eq("verification_status", "approved")
   .is("deleted_at", null)
   .maybeSingle();
 
@@ -151,56 +149,11 @@ Array.isArray(property.localities)
 
 /* ================= VISIBILITY GUARD ================= */
 
+if (property.deleted_at !== null) notFound();
+
 const { data:{ user } } = await supabase.auth.getUser();
-const currentUser = user ?? null;
 
-let canView = false;
-
-if (currentUser) {
-  const { data: userProfile } = await supabase
-    .from("users")
-    .select("id")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
-
-  if (
-    userProfile?.id === property.seller_id &&
-    property.deleted_at === null
-  ) {
-    canView = true;
-  }
-}
-
-if (currentUser) {
-  const { data: userRow } = await supabase
-    .from("users")
-    .select("role")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
-
-  if (userRow?.role === "admin") {
-    canView = true;
-  }
-}
-
-if (
-  property.status === "active" &&
-  property.verification_status === "approved" &&
-  property.deleted_at === null
-) {
-  canView = true;
-}
-
-if (!canView) notFound();
-
-const isSellerPreview =
-  currentUser &&
-  property.seller_id &&
-  property.deleted_at === null &&
-  (
-    property.status !== "active" ||
-    property.verification_status !== "approved"
-  );
+const isSellerPreview = false;
 
 /* canonical redirect */
 
@@ -210,11 +163,7 @@ redirect(`/property/${property.id}/${property.slug}`);
 
 /* view counter */
 
-if (
-  property.status === "active" &&
-  property.verification_status === "approved" &&
-  property.deleted_at === null
-) {
+if (property.deleted_at === null) {
   void supabase.rpc("increment_property_views", {
     property_id: property.id
   });
@@ -260,8 +209,6 @@ property_images(image_url)
 `)
 .eq("city_id",property.city_id)
 .eq("listing_type",property.listing_type)
-.eq("status","active")
-.eq("verification_status", "approved")
 .is("deleted_at", null)
 .neq("id",property.id)
 .limit(4);
