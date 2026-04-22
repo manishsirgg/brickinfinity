@@ -190,8 +190,8 @@ export default async function BuyPage({
 
   const { data: properties, count, error } = await query;
 
-  let finalProperties = properties;
-  let finalCount = count;
+  let finalProperties: any[] | null = properties;
+  let finalCount: number | null = count;
 
   if (error) {
     console.error("Buy page error:", error);
@@ -244,8 +244,8 @@ export default async function BuyPage({
     if (fallbackError) {
       console.error("Buy page fallback error:", fallbackError);
     } else {
-      finalProperties = fallbackProperties;
-      finalCount = fallbackCount;
+      finalProperties = fallbackProperties ?? null;
+      finalCount = fallbackCount ?? null;
     }
   }
 
