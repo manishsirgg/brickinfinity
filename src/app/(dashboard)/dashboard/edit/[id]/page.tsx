@@ -26,6 +26,7 @@ export default function EditPropertyPage() {
 
   const [states,setStates] = useState<any[]>([]);
   const [cities,setCities] = useState<any[]>([]);
+  const [localities,setLocalities] = useState<any[]>([]);
   const [selectedState,setSelectedState] = useState("");
 
   const [newImages,setNewImages] = useState<File[]>([]);
@@ -62,6 +63,19 @@ export default function EditPropertyPage() {
         .order("name");
 
     if(data) setCities(data);
+  }
+
+  async function loadLocalitiesForCity(cityId:string){
+    if(!cityId) return;
+
+    const { data } =
+      await supabase
+        .from("localities")
+        .select("id,name")
+        .eq("city_id", cityId)
+        .order("name");
+
+    if(data) setLocalities(data);
   }
 
   useEffect(()=>{
@@ -114,6 +128,9 @@ export default function EditPropertyPage() {
 
     setSelectedState(stateId);
     await loadCitiesForState(stateId);
+    if(data.city_id){
+      await loadLocalitiesForCity(data.city_id);
+    }
 
     setLoading(false);
   }
@@ -212,6 +229,10 @@ export default function EditPropertyPage() {
         ? property.preferred_tenant || null
         : null;
 
+      if(property.listing_type === "Rent" && !preferredTenant){
+        throw new Error("Preferred tenant is required for rent listings.");
+      }
+
       await supabase
         .from("properties")
         .update({
@@ -219,16 +240,21 @@ export default function EditPropertyPage() {
           description:property.description,
           price:Number(property.price),
           city_id:property.city_id,
+          locality_id:property.locality_id || null,
           listing_type:property.listing_type,
+          property_type:property.property_type,
           bedrooms:property.bedrooms || null,
           bathrooms:property.bathrooms || null,
           parking:property.parking || 0,
           floors:property.floors || null,
+          area_sqft:property.area_sqft || null,
           furnishing_status:property.furnishing_status || null,
           built_up_area:property.built_up_area || null,
           carpet_area:property.carpet_area || null,
           maintenance_charges:property.maintenance_charges || null,
           gated_security:property.gated_security,
+          meta_title:property.meta_title || null,
+          meta_description:property.meta_description || null,
           amenities,
           preferred_tenant:preferredTenant,
           status:shouldMoveToPending ? "pending" : property.status,
@@ -365,6 +391,38 @@ export default function EditPropertyPage() {
               setProperty({...property,price:e.target.value})
             }
           />
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <select className="input-premium"
+              value={property.listing_type || "Sale"}
+              onChange={(e)=>
+                setProperty({
+                  ...property,
+                  listing_type:e.target.value
+                })
+              }
+            >
+              <option value="Sale">For Sale</option>
+              <option value="Rent">For Rent</option>
+            </select>
+
+            <select className="input-premium"
+              value={property.property_type || ""}
+              onChange={(e)=>
+                setProperty({
+                  ...property,
+                  property_type:e.target.value
+                })
+              }
+            >
+              <option value="">Property Type</option>
+              <option>Apartment</option>
+              <option>House</option>
+              <option>Villa</option>
+              <option>Plot</option>
+              <option>Commercial</option>
+            </select>
+          </div>
         </section>
 
         {/* LOCATION */}
@@ -379,10 +437,12 @@ export default function EditPropertyPage() {
               const stateId = e.target.value;
               setSelectedState(stateId);
               setCities([]);
+              setLocalities([]);
 
               setProperty({
                 ...property,
-                city_id:""
+                city_id:"",
+                locality_id:""
               });
             }}
           >
@@ -397,10 +457,15 @@ export default function EditPropertyPage() {
             value={property.city_id || ""}
             disabled={!selectedState}
             onChange={(e)=>
-              setProperty({
-                ...property,
-                city_id:e.target.value
-              })
+              {
+                const cityId = e.target.value;
+                setProperty({
+                  ...property,
+                  city_id:cityId,
+                  locality_id:""
+                });
+                loadLocalitiesForCity(cityId);
+              }
             }
           >
             <option value="">Select City</option>
@@ -409,6 +474,112 @@ export default function EditPropertyPage() {
             ))}
           </select>
 
+          <select
+            className="input-premium"
+            value={property.locality_id || ""}
+            disabled={!property.city_id}
+            onChange={(e)=>
+              setProperty({
+                ...property,
+                locality_id:e.target.value
+              })
+            }
+          >
+            <option value="">Select Locality</option>
+            {localities.map((locality)=>(
+              <option key={locality.id} value={locality.id}>{locality.name}</option>
+            ))}
+          </select>
+
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold">Property Details</h3>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            <input type="number" className="input-premium" placeholder="Bedrooms"
+              value={property.bedrooms || ""}
+              onChange={(e)=> setProperty({...property, bedrooms:e.target.value})}
+            />
+            <input type="number" className="input-premium" placeholder="Bathrooms"
+              value={property.bathrooms || ""}
+              onChange={(e)=> setProperty({...property, bathrooms:e.target.value})}
+            />
+            <input type="number" className="input-premium" placeholder="Parking"
+              value={property.parking || ""}
+              onChange={(e)=> setProperty({...property, parking:e.target.value})}
+            />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <input type="number" className="input-premium" placeholder="Super Built-up Area (sqft)"
+              value={property.area_sqft || ""}
+              onChange={(e)=> setProperty({...property, area_sqft:e.target.value})}
+            />
+            <input type="number" className="input-premium" placeholder="Built-up Area (sqft)"
+              value={property.built_up_area || ""}
+              onChange={(e)=> setProperty({...property, built_up_area:e.target.value})}
+            />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <input type="number" className="input-premium" placeholder="Carpet Area (sqft)"
+              value={property.carpet_area || ""}
+              onChange={(e)=> setProperty({...property, carpet_area:e.target.value})}
+            />
+            <input type="number" className="input-premium" placeholder="Floors"
+              value={property.floors || ""}
+              onChange={(e)=> setProperty({...property, floors:e.target.value})}
+            />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <input type="number" className="input-premium" placeholder="Maintenance Charges"
+              value={property.maintenance_charges || ""}
+              onChange={(e)=> setProperty({...property, maintenance_charges:e.target.value})}
+            />
+
+            <select className="input-premium"
+              value={property.furnishing_status || ""}
+              onChange={(e)=> setProperty({...property, furnishing_status:e.target.value})}
+            >
+              <option value="">Furnishing Status</option>
+              <option>Unfurnished</option>
+              <option>Semi Furnished</option>
+              <option>Fully Furnished</option>
+            </select>
+          </div>
+
+          {property.listing_type === "Rent" && (
+            <select className="input-premium"
+              value={property.preferred_tenant || ""}
+              onChange={(e)=> setProperty({...property, preferred_tenant:e.target.value})}
+            >
+              <option value="">Preferred Tenant</option>
+              <option>Family</option>
+              <option>Bachelors</option>
+              <option>Any</option>
+            </select>
+          )}
+
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(property.gated_security)}
+              onChange={(e)=>setProperty({...property, gated_security:e.target.checked})}
+            />
+            Gated Security
+          </label>
+
+          <input className="input-premium" placeholder="Meta Title"
+            value={property.meta_title || ""}
+            onChange={(e)=> setProperty({...property, meta_title:e.target.value})}
+          />
+
+          <textarea className="textarea-premium" placeholder="Meta Description"
+            value={property.meta_description || ""}
+            onChange={(e)=> setProperty({...property, meta_description:e.target.value})}
+          />
         </section>
 
         {/* AMENITIES */}

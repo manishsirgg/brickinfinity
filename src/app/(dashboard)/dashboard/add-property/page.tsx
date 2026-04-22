@@ -20,6 +20,7 @@ export default function AddPropertyPage() {
 const [selectedState,setSelectedState] = useState("");
 
   const [cities,setCities] = useState<any[]>([]);
+  const [localities,setLocalities] = useState<any[]>([]);
   const [localityName,setLocalityName] = useState("");
 
   const [step,setStep] = useState(1);
@@ -44,6 +45,7 @@ const [selectedState,setSelectedState] = useState("");
   title:"",
   description:"",
   price:"",
+  areaSqft:"",
   propertyType:"Apartment",
   listingType:"Sale",
   bedrooms:"",
@@ -56,12 +58,15 @@ const [selectedState,setSelectedState] = useState("");
   maintenance:"",
   preferredTenant:"",
   gatedSecurity:false,
+  metaTitle:"",
+  metaDescription:"",
   stateId:"",
   cityId:""
 });
 
   useEffect(()=>{ loadStates(); loadCurrentUserRole(); },[]);
 useEffect(()=>{ if(selectedState) loadCities(); },[selectedState]);
+useEffect(()=>{ if(form.cityId) loadLocalities(form.cityId); },[form.cityId]);
 
 async function loadStates(){
   const { data } =
@@ -89,7 +94,7 @@ async function loadCurrentUserRole() {
   }
 }
 
-  async function loadCities(){
+async function loadCities(){
   const { data } =
     await supabase
       .from("cities")
@@ -98,6 +103,16 @@ async function loadCurrentUserRole() {
       .order("name");
 
   if(data) setCities(data);
+}
+
+async function loadLocalities(cityId:string){
+  const { data } = await supabase
+    .from("localities")
+    .select("id,name")
+    .eq("city_id", cityId)
+    .order("name");
+
+  if(data) setLocalities(data);
 }
 
   const generateSlug=(title:string)=>
@@ -157,6 +172,12 @@ async function loadCurrentUserRole() {
   };
 
   async function ensureLocality(){
+    const selectedLocality = localities.find(
+      (locality)=>locality.name.toLowerCase() === localityName.toLowerCase()
+    );
+
+    if(selectedLocality) return selectedLocality.id;
+
     const { data: existing } =
       await supabase
       .from("localities")
@@ -185,6 +206,11 @@ async function loadCurrentUserRole() {
       if(form.title.length<10) return "Title must be at least 10 characters.";
       if(!form.description) return "Description required.";
       if(!form.price) return "Enter price.";
+    }
+    if(step===3){
+      if(form.listingType === "Rent" && !form.preferredTenant){
+        return "Preferred tenant is required for rent listings.";
+      }
     }
     if(step===2){
   if(!form.stateId) return "State required.";
@@ -310,6 +336,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
           title: form.title,
           description: form.description,
           price: Number(form.price),
+          area_sqft: form.areaSqft || null,
           property_type: form.propertyType,
           listing_type: form.listingType,
           bedrooms: form.bedrooms || null,
@@ -320,6 +347,8 @@ const handleSubmit = async (e:React.FormEvent)=>{
           built_up_area: form.builtUpArea || null,
           carpet_area: form.carpetArea || null,
           maintenance_charges: form.maintenance || null,
+          meta_title: form.metaTitle || null,
+          meta_description: form.metaDescription || null,
           preferred_tenant:
             form.listingType === "Rent"
               ? form.preferredTenant
@@ -649,8 +678,14 @@ approved_at: isAdmin ? new Date().toISOString() : null
       className="input-premium"
       value={localityName}
       onChange={(e)=>setLocalityName(e.target.value)}
-      placeholder="Enter locality / area"
+      placeholder="Type or choose locality"
+      list="localities-list"
     />
+    <datalist id="localities-list">
+      {localities.map((locality)=>(
+        <option key={locality.id} value={locality.name} />
+      ))}
+    </datalist>
   </div>
 
 </section>
@@ -703,7 +738,11 @@ approved_at: isAdmin ? new Date().toISOString() : null
         onChange={(e)=>
           setForm({
             ...form,
-            listingType:e.target.value
+            listingType:e.target.value,
+            preferredTenant:
+              e.target.value === "Rent"
+                ? form.preferredTenant
+                : ""
           })
         }
       >
@@ -716,6 +755,42 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
   </div>
 
+  <div className="grid md:grid-cols-2 gap-6">
+    <div>
+      <label className="label">
+        Super Built-up Area (sqft)
+      </label>
+      <input
+        type="number"
+        className="input-premium"
+        value={form.areaSqft}
+        onChange={(e)=>
+          setForm({
+            ...form,
+            areaSqft:e.target.value
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="label">
+        Floors
+      </label>
+
+      <input
+        type="number"
+        className="input-premium"
+        value={form.floors}
+        onChange={(e)=>
+          setForm({
+            ...form,
+            floors:e.target.value
+          })
+        }
+      />
+    </div>
+  </div>
 
   {/* BEDROOMS / BATHROOMS */}
 
@@ -847,6 +922,102 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
     </select>
 
+  </div>
+
+  <div className="grid md:grid-cols-2 gap-6">
+    <div>
+      <label className="label">
+        Monthly Maintenance Charges
+      </label>
+
+      <input
+        type="number"
+        className="input-premium"
+        value={form.maintenance}
+        onChange={(e)=>
+          setForm({
+            ...form,
+            maintenance:e.target.value
+          })
+        }
+      />
+    </div>
+
+    <div className="flex items-end">
+      <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-700">
+        <input
+          type="checkbox"
+          checked={form.gatedSecurity}
+          onChange={(e)=>
+            setForm({
+              ...form,
+              gatedSecurity:e.target.checked
+            })
+          }
+        />
+        Gated Security
+      </label>
+    </div>
+  </div>
+
+  {form.listingType === "Rent" && (
+    <div>
+      <label className="label">
+        Preferred Tenant
+      </label>
+
+      <select
+        className="input-premium"
+        value={form.preferredTenant}
+        onChange={(e)=>
+          setForm({
+            ...form,
+            preferredTenant:e.target.value
+          })
+        }
+      >
+        <option value="">Select</option>
+        <option>Family</option>
+        <option>Bachelors</option>
+        <option>Any</option>
+      </select>
+    </div>
+  )}
+
+  <div className="grid md:grid-cols-2 gap-6">
+    <div>
+      <label className="label">
+        Meta Title
+      </label>
+
+      <input
+        className="input-premium"
+        value={form.metaTitle}
+        onChange={(e)=>
+          setForm({
+            ...form,
+            metaTitle:e.target.value
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="label">
+        Meta Description
+      </label>
+
+      <textarea
+        className="textarea-premium"
+        value={form.metaDescription}
+        onChange={(e)=>
+          setForm({
+            ...form,
+            metaDescription:e.target.value
+          })
+        }
+      />
+    </div>
   </div>
 
 
