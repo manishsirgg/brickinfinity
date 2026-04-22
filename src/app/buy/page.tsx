@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import Link from "next/link";
 import { Metadata } from "next";
 import PropertyCard from "@/components/property/PropertyCard";
@@ -77,7 +77,7 @@ export default async function BuyPage({
   searchParams = {},
 }: Props) {
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const state = cleanString(searchParams.state);
   const city = cleanString(searchParams.city);
@@ -151,6 +151,8 @@ export default async function BuyPage({
       { count: "exact" }
     )
     .eq("listing_type", "Sale")
+    .eq("status", "active")
+    .eq("verification_status", "approved")
     .is("deleted_at", null);
 
   /* ===== GLOBAL KEYWORD SEARCH ===== */
@@ -217,6 +219,8 @@ export default async function BuyPage({
         { count: "exact" }
       )
       .eq("listing_type", "Sale")
+      .eq("status", "active")
+      .eq("verification_status", "approved")
       .is("deleted_at", null);
 
     if (keyword) {

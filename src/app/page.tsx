@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import HeroSearch from "@/components/HeroSearch";
@@ -6,7 +6,7 @@ import PropertyCard from "@/components/property/PropertyCard";
 
 export default async function HomePage() {
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   async function fetchHomeProperties(orderBy: "views_count" | "created_at") {
     const baseSelect = `
@@ -31,6 +31,8 @@ export default async function HomePage() {
     const richQuery = supabase
       .from("properties")
       .select(baseSelect)
+      .eq("status", "active")
+      .eq("verification_status", "approved")
       .is("deleted_at", null)
       .order(orderBy, { ascending: false })
       .limit(4);
@@ -57,6 +59,8 @@ export default async function HomePage() {
         is_featured,
         ownership_verified
       `)
+      .eq("status", "active")
+      .eq("verification_status", "approved")
       .is("deleted_at", null)
       .order(orderBy, { ascending: false })
       .limit(4);
