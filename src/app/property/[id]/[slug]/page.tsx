@@ -36,7 +36,7 @@ const { data: property } = await supabase
   `)
   .eq("id", id)
   .eq("status","active")
-  .eq("ownership_verified", true)
+  .eq("verification_status", "approved")
   .is("deleted_at", null)
   .maybeSingle();
 
@@ -185,7 +185,7 @@ if (currentUser) {
 
 if (
   property.status === "active" &&
-  property.ownership_verified === true &&
+  property.verification_status === "approved" &&
   property.deleted_at === null
 ) {
   canView = true;
@@ -199,7 +199,7 @@ const isSellerPreview =
   property.deleted_at === null &&
   (
     property.status !== "active" ||
-    property.ownership_verified !== true
+    property.verification_status !== "approved"
   );
 
 /* canonical redirect */
@@ -212,7 +212,7 @@ redirect(`/property/${property.id}/${property.slug}`);
 
 if (
   property.status === "active" &&
-  property.ownership_verified === true &&
+  property.verification_status === "approved" &&
   property.deleted_at === null
 ) {
   void supabase.rpc("increment_property_views", {
@@ -261,7 +261,7 @@ property_images(image_url)
 .eq("city_id",property.city_id)
 .eq("listing_type",property.listing_type)
 .eq("status","active")
-.eq("ownership_verified", true)
+.eq("verification_status", "approved")
 .is("deleted_at", null)
 .neq("id",property.id)
 .limit(4);

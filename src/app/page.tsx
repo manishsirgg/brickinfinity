@@ -31,7 +31,7 @@ export default async function HomePage() {
       property_images(image_url)
     `)
     .eq("status", "active")
-    .eq("ownership_verified", true)
+    .eq("verification_status", "approved")
     .is("deleted_at", null)
     .order("views_count", { ascending: false })
     .limit(4);
@@ -59,7 +59,7 @@ export default async function HomePage() {
       property_images(image_url)
     `)
     .eq("status", "active")
-    .eq("ownership_verified", true)
+    .eq("verification_status", "approved")
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(4);
