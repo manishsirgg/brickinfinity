@@ -74,9 +74,10 @@ export default function NavbarClient({ user }: NavbarClientProps) {
 
   /* ================= ROLE FILTER ================= */
 
-  const filteredNav = role
-    ? NAV_ITEMS.filter((item) => item.roles.includes(role))
-    : [];
+  const effectiveRole = role ?? USER_ROLES.BUYER;
+  const filteredNav = NAV_ITEMS.filter((item) =>
+    item.roles.includes(effectiveRole)
+  );
 
   return (
 
@@ -140,7 +141,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
           ) : (
             <>
               {/* SAVED PROPERTIES */}
-              {role !== USER_ROLES.ADMIN && (
+              {user && role !== USER_ROLES.ADMIN && (
                 <Link
                   href="/property/dashboard/saved-properties"
                   className="relative text-gray-600 hover:text-red-600 transition transform hover:scale-110"
@@ -291,7 +292,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
 
         <div className="p-6 space-y-6 text-sm font-medium">
 
-          {role !== USER_ROLES.ADMIN && (
+          {user && role !== USER_ROLES.ADMIN && (
             <Link
               href="/property/dashboard/saved-properties"
               onClick={() => setMobileOpen(false)}
