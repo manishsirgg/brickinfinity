@@ -35,6 +35,7 @@ const [selectedState,setSelectedState] = useState("");
 
   const [video,setVideo] = useState<File | null>(null);
   const [videoPreview,setVideoPreview] = useState<string | null>(null);
+  const [ownershipDocs,setOwnershipDocs] = useState<File[]>([]);
 
   const [amenities,setAmenities] = useState<string[]>([]);
   
@@ -192,6 +193,9 @@ async function loadCurrentUserRole() {
 }
     if(step===4){
       if(images.length===0) return "Upload at least one image.";
+      if(currentUserRole !== "admin" && ownershipDocs.length===0){
+        return "Upload at least one ownership document for approval.";
+      }
     }
     
     return null;
@@ -222,6 +226,51 @@ async function loadCurrentUserRole() {
 
     return data.id;
   }
+
+  const handleOwnershipDocsSelect=(files:FileList | null)=>{
+    if(!files) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf"
+    ];
+
+    const selected = Array.from(files).filter((file)=>{
+      if(file.size > 10*1024*1024){
+        setError(`"${file.name}" is larger than 10MB.`);
+        return false;
+      }
+      if(!allowedTypes.includes(file.type)){
+        setError(`"${file.name}" format is not supported.`);
+        return false;
+      }
+      return true;
+    }).map((file)=>
+      new File(
+        [file],
+        `${Date.now()}-${file.name}`,
+        { type:file.type }
+      )
+    );
+
+    if(!selected.length) return;
+
+    setError("");
+    setOwnershipDocs((prev)=>{
+      const next = [...prev, ...selected];
+      if(next.length > 10){
+        setError("Maximum 10 ownership documents allowed.");
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  const removeOwnershipDoc=(index:number)=>{
+    setOwnershipDocs((prev)=>prev.filter((_,i)=>i!==index));
+  };
 
 const handleSubmit = async (e:React.FormEvent)=>{
 
@@ -340,18 +389,61 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
     /* ===== SUCCESS ===== */
 
+    if(!isAdmin && ownershipDocs.length){
+      const docsRows = [];
+
+      for(const doc of ownershipDocs){
+        const path =
+          `${property.id}/${Date.now()}-${doc.name}`;
+
+        const { error:uploadError } =
+          await supabaseAction.storage
+            .from("ownership-documents")
+            .upload(path, doc);
+
+        if(uploadError){
+          throw new Error(uploadError.message || "Ownership document upload failed");
+        }
+
+        docsRows.push({
+          user_id: profileId,
+          property_id: property.id,
+          document_type: "ownership",
+          document_subtype: "sale_deed",
+          document_url: path,
+          status: "pending"
+        });
+      }
+
+      const { error:docsInsertError } =
+        await supabaseAction
+          .from("documents")
+          .insert(docsRows);
+
+      if(docsInsertError){
+        throw new Error(docsInsertError.message || "Could not save ownership documents");
+      }
+
+      await supabaseAction
+        .from("properties")
+        .update({
+          ownership_verified: false,
+          verification_status: "ownership_submitted",
+          status: "pending",
+          rejection_reason: null
+        })
+        .eq("id", property.id);
+    }
+
     if (isAdmin) {
       setSuccess("Property published successfully. As an admin, your listing is now live.");
       setTimeout(()=>{
         router.push("/dashboard/my-listings");
       },1200);
     } else {
-      setSuccess("Property created successfully. Next step: Upload ownership document.");
-
-      sessionStorage.setItem("pendingOwnershipPropertyId", property.id);
-
+      setSuccess("Property created successfully and submitted with ownership documents for approval.");
       setTimeout(()=>{
-        router.push(`/dashboard/property/${property.id}/ownership`);
+        router.push("/dashboard/my-listings");
       },1500);
     }
 
@@ -938,6 +1030,55 @@ approved_at: isAdmin ? new Date().toISOString() : null
                     )}
 
                   </div>
+
+                  {currentUserRole !== "admin" && (
+                    <div className="space-y-3 mt-8">
+                      <h3 className="section-title">
+                        Ownership / Approval Documents
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        Upload one or more ownership proofs (JPG, PNG, WEBP, PDF up to 10MB each).
+                      </p>
+
+                      <input
+                        type="file"
+                        multiple
+                        accept=".jpg,.jpeg,.png,.webp,.pdf"
+                        className="sr-only"
+                        id="ownership-documents-upload"
+                        onChange={(e)=>handleOwnershipDocsSelect(e.target.files)}
+                      />
+                      <label
+                        htmlFor="ownership-documents-upload"
+                        className="inline-flex cursor-pointer items-center rounded-full bg-gray-900 px-5 py-2 text-sm font-semibold text-white hover:bg-black"
+                      >
+                        Upload Ownership Documents
+                      </label>
+
+                      <div className="space-y-2">
+                        {ownershipDocs.length===0 && (
+                          <p className="text-sm text-gray-500">
+                            No ownership documents selected.
+                          </p>
+                        )}
+                        {ownershipDocs.map((doc,index)=>(
+                          <div
+                            key={`${doc.name}-${index}`}
+                            className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                          >
+                            <span className="truncate pr-2">{doc.name}</span>
+                            <button
+                              type="button"
+                              className="text-red-600"
+                              onClick={()=>removeOwnershipDoc(index)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                 </section>
 

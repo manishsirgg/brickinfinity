@@ -30,7 +30,7 @@ export default function EditPropertyPage() {
 
   const [newImages,setNewImages] = useState<File[]>([]);
   const [video,setVideo] = useState<File | null>(null);
-  const [ownershipDoc,setOwnershipDoc] = useState<File | null>(null);
+  const [ownershipDocs,setOwnershipDocs] = useState<File[]>([]);
   const [amenities,setAmenities] = useState<string[]>([]);
 
   /* ================= LOAD STATES ================= */
@@ -134,6 +134,33 @@ export default function EditPropertyPage() {
 
   function handleVideoSelect(file:File){
     setVideo(file);
+  }
+
+  function handleOwnershipDocsSelect(files:FileList | null){
+    if(!files) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf"
+    ];
+
+    const validFiles = Array.from(files).filter((file)=>{
+      if(file.size > 10*1024*1024){
+        setMessage(`"${file.name}" exceeds 10MB.`);
+        return false;
+      }
+      if(!allowedTypes.includes(file.type)){
+        setMessage(`"${file.name}" is not a supported format.`);
+        return false;
+      }
+      return true;
+    });
+
+    if(!validFiles.length) return;
+
+    setOwnershipDocs((prev)=>[...prev, ...validFiles]);
   }
 
   async function getProfileId(authId:string){
@@ -246,21 +273,21 @@ export default function EditPropertyPage() {
 
       /* OWNERSHIP */
 
-      if(ownershipDoc){
+      if(ownershipDocs.length){
+        const docsRows = [];
 
-        const path =
-          `${propertyId}/${Date.now()}-${ownershipDoc.name}`;
+        for(const ownershipDoc of ownershipDocs){
+          const path =
+            `${propertyId}/${Date.now()}-${ownershipDoc.name}`;
 
-        const { error } =
-          await supabase.storage
-            .from("ownership-documents")
-            .upload(path,ownershipDoc);
+          const { error } =
+            await supabase.storage
+              .from("ownership-documents")
+              .upload(path,ownershipDoc);
 
-        if(error) throw new Error("Ownership upload failed");
+          if(error) throw new Error("Ownership upload failed");
 
-        await supabase
-          .from("documents")
-          .insert({
+          docsRows.push({
             user_id:profileId,
             property_id:propertyId,
             document_type:"ownership",
@@ -268,6 +295,11 @@ export default function EditPropertyPage() {
             document_url:path,
             status:"pending"
           });
+        }
+
+        await supabase
+          .from("documents")
+          .insert(docsRows);
 
         await supabase
           .from("properties")
@@ -450,16 +482,24 @@ export default function EditPropertyPage() {
 
         <section>
           <h3 className="text-lg font-semibold">
-            Re-Upload Ownership Document
+            Re-Upload Ownership Documents
           </h3>
 
           <input type="file"
+            multiple
             accept=".jpg,.jpeg,.png,.webp,.pdf"
             className="input-premium"
             onChange={(e)=>
-              setOwnershipDoc(e.target.files?.[0] || null)
+              handleOwnershipDocsSelect(e.target.files)
             }
           />
+          {ownershipDocs.length > 0 && (
+            <ul className="mt-3 space-y-2 text-sm text-gray-600">
+              {ownershipDocs.map((doc, index)=>(
+                <li key={`${doc.name}-${index}`}>• {doc.name}</li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <button

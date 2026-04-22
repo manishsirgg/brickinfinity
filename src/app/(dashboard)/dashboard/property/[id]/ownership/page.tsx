@@ -13,7 +13,7 @@ export default function OwnershipUploadPage(){
   const supabase = createClient();
 
   const [property,setProperty] = useState<any>(null);
-  const [file,setFile] = useState<File | null>(null);
+  const [files,setFiles] = useState<File[]>([]);
   const [ownershipType,setOwnershipType] = useState("sale_deed");
 
   const [loading,setLoading] = useState(true);
@@ -47,8 +47,8 @@ export default function OwnershipUploadPage(){
 
   async function handleUpload(){
 
-    if(!file){
-      setError("Please select ownership document.");
+    if(!files.length){
+      setError("Please select at least one ownership document.");
       return;
     }
 
@@ -79,29 +79,33 @@ const profileId = userRow.id;
 
       /* Upload to storage */
 
-      const path =
-        `${propertyId}/${Date.now()}-${file.name}`;
+      const documentRows = [];
 
-      const { error:uploadError } =
-        await supabase.storage
-          .from("ownership-documents")
-          .upload(path, file);
+      for(const file of files){
+        const path =
+          `${propertyId}/${Date.now()}-${file.name}`;
 
-      if(uploadError) throw uploadError;
+        const { error:uploadError } =
+          await supabase.storage
+            .from("ownership-documents")
+            .upload(path, file);
 
-      /* Insert document row */
+        if(uploadError) throw uploadError;
+
+        documentRows.push({
+          user_id: profileId,
+          property_id: propertyId,
+          document_type: "ownership",
+          document_subtype: ownershipType,
+          document_url: path,
+          status: "pending"
+        });
+      }
 
       const { error:insertError } =
         await supabase
           .from("documents")
-          .insert({
-            user_id: profileId,
-            property_id: propertyId,
-            document_type: "ownership",
-            document_subtype: ownershipType,
-            document_url: path,
-            status: "pending"
-          });
+          .insert(documentRows);
 
       if(insertError) throw insertError;
 
@@ -116,7 +120,7 @@ const profileId = userRow.id;
         })
         .eq("id", propertyId);
 
-      setSuccess("Ownership document submitted successfully.");
+      setSuccess("Ownership documents submitted successfully.");
 
       setTimeout(()=>{
         router.push("/dashboard/my-listings");
@@ -185,24 +189,28 @@ const profileId = userRow.id;
         <input
           id="ownership-proof-upload"
           type="file"
+          multiple
           accept=".jpg,.jpeg,.png,.webp,.pdf"
           className="sr-only"
           onChange={(e)=>{
-            const f = e.target.files?.[0];
-            if(!f) return;
+            const selected = Array.from(e.target.files || []);
+            if(!selected.length) return;
 
-            if(f.size > 10*1024*1024){
-              setError("File must be under 10MB.");
-              return;
-            }
-
-            setFile(
+            const validFiles = selected.filter((f)=>{
+              if(f.size > 10*1024*1024){
+                setError(`"${f.name}" must be under 10MB.`);
+                return false;
+              }
+              return true;
+            }).map((f)=>
               new File(
                 [f],
                 Date.now()+"-"+f.name,
                 { type:f.type }
               )
             );
+
+            setFiles((prev)=>[...prev, ...validFiles]);
           }}
         />
         <label
@@ -212,8 +220,15 @@ const profileId = userRow.id;
           Upload Ownership Proof
         </label>
         <p className="text-xs text-gray-500 mb-4">
-          Accepted: JPG, PNG, WEBP, PDF (max 10MB). {file ? `Selected: ${file.name}` : "No file selected."}
+          Accepted: JPG, PNG, WEBP, PDF (max 10MB). {files.length ? `${files.length} file(s) selected.` : "No files selected."}
         </p>
+        {files.length > 0 && (
+          <ul className="mb-4 space-y-1 text-xs text-gray-600">
+            {files.map((file, index)=>(
+              <li key={`${file.name}-${index}`}>• {file.name}</li>
+            ))}
+          </ul>
+        )}
 
         <button
           className="btn-primary"
