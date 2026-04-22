@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import HeroSearch from "@/components/HeroSearch";
@@ -6,59 +6,80 @@ import PropertyCard from "@/components/property/PropertyCard";
 
 export default async function HomePage() {
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
+
+  async function fetchHomeProperties(orderBy: "views_count" | "created_at") {
+    const baseSelect = `
+      id,
+      slug,
+      price,
+      listing_type,
+      property_type,
+      bedrooms,
+      bathrooms,
+      built_up_area,
+      amenities,
+      created_at,
+      views_count,
+      is_featured,
+      ownership_verified,
+      cities(name),
+      localities(name),
+      property_images(image_url)
+    `;
+
+    const richQuery = supabase
+      .from("properties")
+      .select(baseSelect)
+      .eq("status", "active")
+      .eq("verification_status", "approved")
+      .is("deleted_at", null)
+      .order(orderBy, { ascending: false })
+      .limit(4);
+
+    const { data, error } = await richQuery;
+    if (!error) return data;
+
+    console.error(`Home ${orderBy} query error:`, error);
+
+    const { data: fallback, error: fallbackError } = await supabase
+      .from("properties")
+      .select(`
+        id,
+        slug,
+        price,
+        listing_type,
+        property_type,
+        bedrooms,
+        bathrooms,
+        built_up_area,
+        amenities,
+        created_at,
+        views_count,
+        is_featured,
+        ownership_verified
+      `)
+      .eq("status", "active")
+      .eq("verification_status", "approved")
+      .is("deleted_at", null)
+      .order(orderBy, { ascending: false })
+      .limit(4);
+
+    if (fallbackError) {
+      console.error(`Home ${orderBy} fallback error:`, fallbackError);
+      return null;
+    }
+
+    return fallback;
+  }
 
   /* ================= FEATURED ================= */
 
-  const { data: featured } = await supabase
-    .from("properties")
-    .select(`
-      id,
-      slug,
-      price,
-      listing_type,
-      property_type,
-      bedrooms,
-      bathrooms,
-      built_up_area,
-      amenities,
-      created_at,
-      views_count,
-      is_featured,
-      ownership_verified,
-      cities(name),
-      localities(name),
-      property_images(image_url)
-    `)
-    .is("deleted_at", null)
-    .order("views_count", { ascending: false })
-    .limit(4);
+  const featured = await fetchHomeProperties("views_count");
 
   /* ================= LATEST ================= */
 
-  const { data: latest } = await supabase
-    .from("properties")
-    .select(`
-      id,
-      slug,
-      price,
-      listing_type,
-      property_type,
-      bedrooms,
-      bathrooms,
-      built_up_area,
-      amenities,
-      created_at,
-      views_count,
-      is_featured,
-      ownership_verified,
-      cities(name),
-      localities(name),
-      property_images(image_url)
-    `)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(4);
+  const latest = await fetchHomeProperties("created_at");
 
   return (
     <main className="bg-[#F7F8FA]">

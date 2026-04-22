@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { notFound, redirect } from "next/navigation";
 import { Metadata } from "next";
 
@@ -16,7 +17,7 @@ export async function generateMetadata(
 ): Promise<Metadata>{
 
 const { id } = await params;
-const supabase = await createClient();
+const supabase = createServiceClient();
 
 const { data: property } = await supabase
   .from("properties")
@@ -35,6 +36,8 @@ const { data: property } = await supabase
     property_images(image_url)
   `)
   .eq("id", id)
+  .eq("status", "active")
+  .eq("verification_status", "approved")
   .is("deleted_at", null)
   .maybeSingle();
 
@@ -114,7 +117,8 @@ export default async function PropertyPage(
 ){
 
 const { id, slug } = await params;
-const supabase = await createClient();
+const supabase = createServiceClient();
+const viewerSupabase = await createClient();
 
 const { data:property,error } = await supabase
 .from("properties")
@@ -126,6 +130,9 @@ cities(name, states(name)),
 localities(name)
 `)
 .eq("id",id)
+.eq("status", "active")
+.eq("verification_status", "approved")
+.is("deleted_at", null)
 .maybeSingle();
 
 if(error || !property) notFound();
@@ -151,7 +158,7 @@ Array.isArray(property.localities)
 
 if (property.deleted_at !== null) notFound();
 
-const { data:{ user } } = await supabase.auth.getUser();
+const { data:{ user } } = await viewerSupabase.auth.getUser();
 
 const isSellerPreview = false;
 
@@ -184,7 +191,7 @@ seller?.[0] || { full_name:"Property Owner" };
 let favorite = null;
 
 if(user){
-const { data:fav } = await supabase
+const { data:fav } = await viewerSupabase
 .from("favorites")
 .select("id")
 .eq("property_id",property.id)
@@ -209,6 +216,8 @@ property_images(image_url)
 `)
 .eq("city_id",property.city_id)
 .eq("listing_type",property.listing_type)
+.eq("status", "active")
+.eq("verification_status", "approved")
 .is("deleted_at", null)
 .neq("id",property.id)
 .limit(4);

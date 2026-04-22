@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import Link from "next/link";
 import { Metadata } from "next";
 import PropertyCard from "@/components/property/PropertyCard";
@@ -77,7 +77,7 @@ export default async function BuyPage({
   searchParams = {},
 }: Props) {
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const state = cleanString(searchParams.state);
   const city = cleanString(searchParams.city);
@@ -151,6 +151,8 @@ export default async function BuyPage({
       { count: "exact" }
     )
     .eq("listing_type", "Sale")
+    .eq("status", "active")
+    .eq("verification_status", "approved")
     .is("deleted_at", null);
 
   /* ===== GLOBAL KEYWORD SEARCH ===== */
@@ -188,15 +190,71 @@ export default async function BuyPage({
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  const { data: properties, count, error } =
-    await query;
+  const { data: properties, count, error } = await query;
+
+  let finalProperties: any[] | null = properties;
+  let finalCount: number | null = count;
 
   if (error) {
     console.error("Buy page error:", error);
+
+    let fallbackQuery = supabase
+      .from("properties")
+      .select(
+        `
+        id,
+        slug,
+        price,
+        listing_type,
+        property_type,
+        bedrooms,
+        bathrooms,
+        built_up_area,
+        amenities,
+        ownership_verified,
+        is_featured,
+        views_count,
+        created_at
+        `,
+        { count: "exact" }
+      )
+      .eq("listing_type", "Sale")
+      .eq("status", "active")
+      .eq("verification_status", "approved")
+      .is("deleted_at", null);
+
+    if (keyword) {
+      fallbackQuery = fallbackQuery.or(`
+        property_type.ilike.%${keyword}%,
+        title.ilike.%${keyword}%,
+        description.ilike.%${keyword}%
+      `);
+    }
+
+    if (cityId) fallbackQuery = fallbackQuery.eq("city_id", cityId);
+    if (minPrice !== undefined) fallbackQuery = fallbackQuery.gte("price", minPrice);
+    if (maxPrice !== undefined) fallbackQuery = fallbackQuery.lte("price", maxPrice);
+    if (propertyType) fallbackQuery = fallbackQuery.eq("property_type", propertyType);
+    if (bedrooms !== undefined) fallbackQuery = fallbackQuery.eq("bedrooms", bedrooms);
+    if (amenities) fallbackQuery = fallbackQuery.contains("amenities", [amenities]);
+
+    const { data: fallbackProperties, count: fallbackCount, error: fallbackError } =
+      await fallbackQuery
+        .order("is_featured", { ascending: false })
+        .order("views_count", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+    if (fallbackError) {
+      console.error("Buy page fallback error:", fallbackError);
+    } else {
+      finalProperties = fallbackProperties ?? null;
+      finalCount = fallbackCount ?? null;
+    }
   }
 
-  const totalPages = count
-    ? Math.ceil(count / pageSize)
+  const totalPages = finalCount
+    ? Math.ceil(finalCount / pageSize)
     : 1;
 
   function buildPageUrl(pageNumber: number) {
@@ -219,11 +277,11 @@ export default async function BuyPage({
         </h1>
 
         <p className="text-sm text-muted">
-          {count || 0} verified properties for sale.
+          {finalCount || 0} verified properties for sale.
         </p>
       </div>
 
-      {!properties?.length && (
+      {!finalProperties?.length && (
         <div className="text-center py-20 border border-border rounded-xl">
           <p className="text-muted">
             No properties found matching your filters.
@@ -232,7 +290,7 @@ export default async function BuyPage({
       )}
 
       <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
-        {properties?.map((property: any) => (
+        {finalProperties?.map((property: any) => (
           <PropertyCard
             key={property.id}
             property={property}
