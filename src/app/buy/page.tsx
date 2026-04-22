@@ -151,8 +151,6 @@ export default async function BuyPage({
       { count: "exact" }
     )
     .eq("listing_type", "Sale")
-    .eq("status", "active")
-    .eq("verification_status", "approved")
     .is("deleted_at", null);
 
   /* ===== GLOBAL KEYWORD SEARCH ===== */
