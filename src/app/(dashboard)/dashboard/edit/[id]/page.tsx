@@ -28,6 +28,7 @@ export default function EditPropertyPage() {
   const [cities,setCities] = useState<any[]>([]);
   const [localities,setLocalities] = useState<any[]>([]);
   const [selectedState,setSelectedState] = useState("");
+  const [localityName,setLocalityName] = useState("");
 
   const [newImages,setNewImages] = useState<File[]>([]);
   const [video,setVideo] = useState<File | null>(null);
@@ -104,6 +105,7 @@ export default function EditPropertyPage() {
         .select(`
           *,
           cities(id,state_id,name),
+          localities(name),
           property_images(id,image_url),
           property_videos(id,video_url)
         `)
@@ -123,6 +125,7 @@ export default function EditPropertyPage() {
       property_images:data.property_images || [],
       property_videos:data.property_videos || []
     });
+    setLocalityName(data.localities?.name || "");
 
     const stateId = data.cities?.state_id || "";
 
@@ -190,6 +193,42 @@ export default function EditPropertyPage() {
     return data?.id;
   }
 
+  async function ensureLocality(){
+    if(!property.city_id || !localityName.trim()){
+      return null;
+    }
+
+    const normalizedName = localityName.trim();
+
+    const selectedLocality = localities.find(
+      (locality)=>locality.name.toLowerCase() === normalizedName.toLowerCase()
+    );
+
+    if(selectedLocality) return selectedLocality.id;
+
+    const { data:existing } =
+      await supabase
+        .from("localities")
+        .select("id")
+        .eq("city_id", property.city_id)
+        .ilike("name", normalizedName)
+        .maybeSingle();
+
+    if(existing) return existing.id;
+
+    const { data } =
+      await supabase
+        .from("localities")
+        .insert({
+          city_id:property.city_id,
+          name:normalizedName
+        })
+        .select("id")
+        .single();
+
+    return data?.id || null;
+  }
+
   async function removeExistingImage(id:string){
 
     await supabase
@@ -219,6 +258,7 @@ export default function EditPropertyPage() {
 
       const profileId =
         await getProfileId(session.user.id);
+      const localityId = await ensureLocality();
 
       const shouldMoveToPending =
         property.status==="approved" ||
@@ -240,7 +280,7 @@ export default function EditPropertyPage() {
           description:property.description,
           price:Number(property.price),
           city_id:property.city_id,
-          locality_id:property.locality_id || null,
+          locality_id:localityId || null,
           listing_type:property.listing_type,
           property_type:property.property_type,
           bedrooms:property.bedrooms || null,
@@ -444,6 +484,7 @@ export default function EditPropertyPage() {
                 city_id:"",
                 locality_id:""
               });
+              setLocalityName("");
             }}
           >
             <option value="">Select State</option>
@@ -464,6 +505,7 @@ export default function EditPropertyPage() {
                   city_id:cityId,
                   locality_id:""
                 });
+                setLocalityName("");
                 loadLocalitiesForCity(cityId);
               }
             }
@@ -474,22 +516,19 @@ export default function EditPropertyPage() {
             ))}
           </select>
 
-          <select
+          <input
             className="input-premium"
-            value={property.locality_id || ""}
+            value={localityName}
+            placeholder="Enter locality"
+            list="edit-localities-list"
             disabled={!property.city_id}
-            onChange={(e)=>
-              setProperty({
-                ...property,
-                locality_id:e.target.value
-              })
-            }
-          >
-            <option value="">Select Locality</option>
+            onChange={(e)=>setLocalityName(e.target.value)}
+          />
+          <datalist id="edit-localities-list">
             {localities.map((locality)=>(
-              <option key={locality.id} value={locality.id}>{locality.name}</option>
+              <option key={locality.id} value={locality.name} />
             ))}
-          </select>
+          </datalist>
 
         </section>
 
