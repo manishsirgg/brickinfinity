@@ -69,6 +69,10 @@ export default async function AdminLayout({
               Logs
             </Link>
 
+            <Link href="/admin/leads" className="hover:underline">
+              Leads
+            </Link>
+
             <Link href="/" className="hover:underline text-red-600">
               Exit Admin
             </Link>
