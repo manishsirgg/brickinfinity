@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
-
   try {
-
     const body = await req.json();
 
     const {
@@ -13,12 +11,12 @@ export async function POST(req: Request) {
       name,
       phone,
       email,
-      message
+      message,
     } = body;
 
     /* ================= BASIC VALIDATION ================= */
 
-    if (!property_id || !seller_id || !name || !phone) {
+    if (!property_id || !name || !phone) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -61,7 +59,14 @@ export async function POST(req: Request) {
       );
     }
 
-    if (property.seller_id !== seller_id) {
+    if (!property.seller_id) {
+      return NextResponse.json(
+        { error: "Property owner unavailable" },
+        { status: 400 }
+      );
+    }
+
+    if (seller_id && property.seller_id !== seller_id) {
       return NextResponse.json(
         { error: "Seller mismatch" },
         { status: 400 }
@@ -91,12 +96,12 @@ export async function POST(req: Request) {
       .from("leads")
       .insert({
         property_id,
-        seller_id,
+        seller_id: property.seller_id,
         buyer_name: name,
         buyer_phone: phone,
         buyer_email: email,
         message,
-        status: "new"
+        status: "new",
       });
 
     if (error) {
@@ -108,16 +113,12 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true });
-
   } catch (err) {
-
     console.error("Lead API error:", err);
 
     return NextResponse.json(
       { error: "Server error" },
       { status: 500 }
     );
-
   }
-
 }

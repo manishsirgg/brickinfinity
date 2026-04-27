@@ -13,7 +13,8 @@ export default function AdminDashboard() {
     ownership: 0,
     properties: 0,
     reports: 0,
-    users: 0
+    users: 0,
+    leads: 0
   })
 
   const [loading, setLoading] = useState(true)
@@ -39,7 +40,8 @@ export default function AdminDashboard() {
         ownershipRes,
         propertyRes,
         reportRes,
-        userRes
+        userRes,
+        leadsRes
       ] = await Promise.all([
 
         /* ================= KYC ================= */
@@ -78,7 +80,14 @@ export default function AdminDashboard() {
 
         supabase
           .from("users")
-          .select("*", { count: "exact", head: true })
+          .select("*", { count: "exact", head: true }),
+
+        /* ================= ADMIN PROPERTY LEADS ================= */
+
+        supabase
+          .from("leads")
+          .select("id, users!inner(role)", { count: "exact", head: true })
+          .eq("users.role", "admin")
 
       ])
 
@@ -87,7 +96,8 @@ export default function AdminDashboard() {
         ownership: ownershipRes.count || 0,
         properties: propertyRes.count || 0,
         reports: reportRes.count || 0,
-        users: userRes.count || 0
+        users: userRes.count || 0,
+        leads: leadsRes.count || 0
       })
 
     } catch (err) {
@@ -183,6 +193,13 @@ export default function AdminDashboard() {
           <div className="text-lg font-semibold">Moderation Logs</div>
           <div className="text-sm text-gray-500 mt-1">
             Audit Trail
+          </div>
+        </Link>
+
+        <Link href="/admin/leads" className="border rounded-xl p-6 hover:bg-gray-50">
+          <div className="text-lg font-semibold">Admin Leads</div>
+          <div className="text-sm text-gray-500 mt-1">
+            Total Leads: {stats.leads}
           </div>
         </Link>
 
