@@ -31,14 +31,19 @@ export default function AdminPropertiesPage() {
         *,
         cities(name),
         localities(name),
-        users:seller_id (
+        users:seller_id!inner (
           id,
+          role,
           full_name,
           email,
           phone,
           reputation_score
         )
       `)
+      .eq("status", "pending")
+      .eq("ownership_verified", true)
+      .in("verification_status", ["ownership_approved", "approved"])
+      .neq("users.role", "admin")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
 
@@ -256,7 +261,7 @@ export default function AdminPropertiesPage() {
         <div className="border rounded-xl p-4">
 
           <h2 className="font-semibold mb-4">
-           All Listings
+           Pending Listing Review
           </h2>
 
           {loadingQueue && <p className="text-sm text-gray-500">Loading...</p>}

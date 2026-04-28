@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function NavbarSearch() {
 
   const router = useRouter();
+  const pathname = usePathname();
   const [query, setQuery] = useState("");
 
   function handleSearch(e: React.FormEvent) {
@@ -20,7 +21,8 @@ export default function NavbarSearch() {
     const params = new URLSearchParams();
     params.set("keyword", value);
 
-    router.push(`/buy?${params.toString()}`);
+    const targetBase = pathname?.startsWith("/rent") ? "/rent" : "/buy";
+    router.push(`${targetBase}?${params.toString()}`);
 
     setQuery("");
   }

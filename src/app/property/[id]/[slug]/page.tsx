@@ -224,9 +224,22 @@ property_images(image_url)
 
 if(similar) similarProperties = similar;
 
+const rentAmount = property.listing_type === "Rent"
+  ? Number(property.hourly_rate || property.daily_rate || property.monthly_rate || property.price || 0)
+  : Number(property.price || 0);
+
+const rentUnit = property.listing_type === "Rent"
+  ? property.hourly_rate
+    ? "/ hour"
+    : property.daily_rate
+      ? "/ day"
+      : "/ month"
+  : "";
+
 const formattedPrice =
 new Intl.NumberFormat("en-IN")
-.format(property.price || 0);
+.format(rentAmount || 0);
+
 
 /* MAP SAFE */
 
@@ -300,7 +313,7 @@ Contact Seller
 
 <p className="text-3xl font-bold text-primary">
 ₹ {formattedPrice}
-{property.listing_type==="Rent" && " / month"}
+{property.listing_type==="Rent" && ` ${rentUnit}`}
 </p>
 
 <SavePropertyButton
@@ -312,6 +325,7 @@ initialSaved={!!favorite}
 
 <ShareButtons
 url={`${baseUrl}/property/${property.id}/${property.slug}`}
+title={property.title}
 />
 
 </section>

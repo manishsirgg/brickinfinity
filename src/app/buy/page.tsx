@@ -140,6 +140,10 @@ export default async function BuyPage({
       bathrooms,
       built_up_area,
       amenities,
+      hourly_rate,
+      daily_rate,
+      monthly_rate,
+      rent_frequency,
       ownership_verified,
       is_featured,
       views_count,
@@ -160,6 +164,8 @@ export default async function BuyPage({
   if (keyword) {
     query = query.or(`
       property_type.ilike.%${keyword}%,
+      title.ilike.%${keyword}%,
+      description.ilike.%${keyword}%,
       cities.name.ilike.%${keyword}%,
       localities.name.ilike.%${keyword}%
     `);

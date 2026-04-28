@@ -8,8 +8,12 @@ import { useRouter, useParams } from "next/navigation";
 const supabase = createClient();
 
 const AMENITIES = [
-  "Lift","Gym","Swimming Pool","Power Backup","Security",
-  "Garden","Club House","Visitor Parking","Children Play Area",
+  "Lift", "Gym", "Swimming Pool", "Power Backup", "24x7 Security", "CCTV",
+  "Intercom", "Garden", "Club House", "Visitor Parking", "Children Play Area",
+  "Jogging Track", "Community Hall", "Senior Citizen Area", "Rainwater Harvesting",
+  "Fire Safety", "Gas Pipeline", "Wi-Fi", "Air Conditioning", "Balcony",
+  "Modular Kitchen", "Pet Friendly", "Wheelchair Accessible", "EV Charging",
+  "Nearby Metro", "School Nearby", "Hospital Nearby", "Shopping Mall Nearby"
 ];
 
 export default function EditPropertyPage() {
@@ -273,6 +277,15 @@ export default function EditPropertyPage() {
         throw new Error("Preferred tenant is required for rent listings.");
       }
 
+      if (property.listing_type === "Rent") {
+        const hasRate = Boolean(
+          property.hourly_rate || property.daily_rate || property.monthly_rate || property.price
+        );
+        if (!hasRate) {
+          throw new Error("Provide at least one rent rate (hourly, daily, or monthly).");
+        }
+      }
+
       await supabase
         .from("properties")
         .update({
@@ -297,6 +310,26 @@ export default function EditPropertyPage() {
           meta_description:property.meta_description || null,
           amenities,
           preferred_tenant:preferredTenant,
+          rent_frequency:
+            property.listing_type === "Rent"
+              ? [
+                  property.hourly_rate ? "Hourly" : null,
+                  property.daily_rate ? "Daily" : null,
+                  property.monthly_rate || property.price ? "Monthly" : null,
+                ].filter(Boolean)
+              : null,
+          hourly_rate:
+            property.listing_type === "Rent" && property.hourly_rate
+              ? Number(property.hourly_rate)
+              : null,
+          daily_rate:
+            property.listing_type === "Rent" && property.daily_rate
+              ? Number(property.daily_rate)
+              : null,
+          monthly_rate:
+            property.listing_type === "Rent"
+              ? Number(property.monthly_rate || property.price)
+              : null,
           status:shouldMoveToPending ? "pending" : property.status,
           verification_status:shouldMoveToPending
             ? "edited_requires_review"
@@ -588,6 +621,32 @@ export default function EditPropertyPage() {
               <option>Fully Furnished</option>
             </select>
           </div>
+
+          {property.listing_type === "Rent" && (
+            <div className="grid md:grid-cols-3 gap-4">
+              <input
+                type="number"
+                className="input-premium"
+                placeholder="Hourly Rent (₹)"
+                value={property.hourly_rate || ""}
+                onChange={(e)=> setProperty({...property, hourly_rate:e.target.value})}
+              />
+              <input
+                type="number"
+                className="input-premium"
+                placeholder="Daily Rent (₹)"
+                value={property.daily_rate || ""}
+                onChange={(e)=> setProperty({...property, daily_rate:e.target.value})}
+              />
+              <input
+                type="number"
+                className="input-premium"
+                placeholder="Monthly Rent (₹)"
+                value={property.monthly_rate || property.price || ""}
+                onChange={(e)=> setProperty({...property, monthly_rate:e.target.value, price:e.target.value || property.price})}
+              />
+            </div>
+          )}
 
           {property.listing_type === "Rent" && (
             <select className="input-premium"
