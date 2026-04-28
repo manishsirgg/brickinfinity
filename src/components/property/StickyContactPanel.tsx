@@ -170,14 +170,15 @@ export default function StickyContactPanel({
 
       setLoading(true);
 
-      await sendLead();
-
       const revealRes = await fetch("/api/leads/reveal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           property_id: propertyId,
-          buyer_phone: phone
+          buyer_name: name,
+          buyer_phone: phone,
+          buyer_email: email,
+          message
         })
       });
 
