@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadPropertyMedia } from "@/lib/storage/uploadImage";
 import { useRouter, useParams } from "next/navigation";
+import { buildPropertySeoFields } from "@/lib/seo/propertySeo";
 
 const supabase = createClient();
 
@@ -263,6 +264,7 @@ export default function EditPropertyPage() {
       const profileId =
         await getProfileId(session.user.id);
       const localityId = await ensureLocality();
+      const seoFields = buildPropertySeoFields(property.title, property.description);
 
       const shouldMoveToPending =
         property.status==="approved" ||
@@ -306,8 +308,7 @@ export default function EditPropertyPage() {
           carpet_area:property.carpet_area || null,
           maintenance_charges:property.maintenance_charges || null,
           gated_security:property.gated_security,
-          meta_title:property.meta_title || null,
-          meta_description:property.meta_description || null,
+          ...seoFields,
           amenities,
           preferred_tenant:preferredTenant,
           rent_frequency:
@@ -669,15 +670,6 @@ export default function EditPropertyPage() {
             Gated Security
           </label>
 
-          <input className="input-premium" placeholder="Meta Title"
-            value={property.meta_title || ""}
-            onChange={(e)=> setProperty({...property, meta_title:e.target.value})}
-          />
-
-          <textarea className="textarea-premium" placeholder="Meta Description"
-            value={property.meta_description || ""}
-            onChange={(e)=> setProperty({...property, meta_description:e.target.value})}
-          />
         </section>
 
         {/* AMENITIES */}

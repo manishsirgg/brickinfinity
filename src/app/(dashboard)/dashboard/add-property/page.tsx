@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { uploadPropertyMedia } from "@/lib/storage/uploadImage";
+import { buildPropertySeoFields } from "@/lib/seo/propertySeo";
 
 const supabase = createClient();
 
@@ -66,8 +67,6 @@ const [selectedState,setSelectedState] = useState("");
   dailyRate:"",
   monthlyRate:"",
   gatedSecurity:false,
-  metaTitle:"",
-  metaDescription:"",
   stateId:"",
   cityId:""
 });
@@ -353,6 +352,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
     const isAdmin = resolvedRole === "admin";
     const localityId = await ensureLocality();
     const slug = generateSlug(form.title);
+    const seoFields = buildPropertySeoFields(form.title, form.description);
 
     /* ===== CREATE PROPERTY ===== */
 
@@ -375,8 +375,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
           built_up_area: form.builtUpArea || null,
           carpet_area: form.carpetArea || null,
           maintenance_charges: form.maintenance || null,
-          meta_title: form.metaTitle || null,
-          meta_description: form.metaDescription || null,
+          ...seoFields,
           preferred_tenant:
             form.listingType === "Rent"
               ? form.preferredTenant
@@ -1071,43 +1070,6 @@ approved_at: isAdmin ? new Date().toISOString() : null
       </select>
     </div>
   )}
-
-  <div className="grid md:grid-cols-2 gap-6">
-    <div>
-      <label className="label">
-        Meta Title
-      </label>
-
-      <input
-        className="input-premium"
-        value={form.metaTitle}
-        onChange={(e)=>
-          setForm({
-            ...form,
-            metaTitle:e.target.value
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="label">
-        Meta Description
-      </label>
-
-      <textarea
-        className="textarea-premium"
-        value={form.metaDescription}
-        onChange={(e)=>
-          setForm({
-            ...form,
-            metaDescription:e.target.value
-          })
-        }
-      />
-    </div>
-  </div>
-
 
   {/* AMENITIES */}
 
