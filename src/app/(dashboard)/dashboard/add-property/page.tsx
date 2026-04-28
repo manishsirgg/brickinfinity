@@ -322,7 +322,20 @@ const handleSubmit = async (e:React.FormEvent)=>{
     if(!session) throw new Error("Session expired");
 
     const profileId = await getProfileId(session.user.id);
-    const isAdmin = currentUserRole === "admin";
+    const { data: userRoleRecord } = await supabaseAction
+      .from("users")
+      .select("role")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+
+    const resolvedRole =
+      userRoleRecord?.role === "admin" ||
+      userRoleRecord?.role === "seller" ||
+      userRoleRecord?.role === "buyer"
+        ? userRoleRecord.role
+        : currentUserRole;
+
+    const isAdmin = resolvedRole === "admin";
     const localityId = await ensureLocality();
     const slug = generateSlug(form.title);
 
@@ -411,7 +424,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
         .from("properties")
         .update({
           verification_status: "media_failed",
-          status: currentUserRole === "admin" ? "active" : "pending"
+          status: isAdmin ? "active" : "pending"
         })
         .eq("id", property.id);
     }
