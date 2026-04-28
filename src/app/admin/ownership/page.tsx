@@ -34,8 +34,9 @@ export default function OwnershipVerificationPage(){
           document_url,
           status,
           created_at,
-          users (
+          users!inner (
             id,
+            role,
             full_name,
             email,
             phone
@@ -55,6 +56,7 @@ export default function OwnershipVerificationPage(){
         .eq("status","pending")
         .eq("properties.status","pending")
         .eq("properties.ownership_verified",false)
+        .neq("users.role", "admin")
         .order("created_at",{ascending:false})
         .limit(50)
 

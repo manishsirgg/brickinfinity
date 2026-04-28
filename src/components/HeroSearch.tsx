@@ -178,6 +178,7 @@ export default function HeroSearch() {
         >
           <option value="">Property Type</option>
           <option>Apartment</option>
+          <option>House</option>
           <option>Villa</option>
           <option>Plot</option>
           <option>Office</option>

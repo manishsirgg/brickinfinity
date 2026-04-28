@@ -8,8 +8,12 @@ import { uploadPropertyMedia } from "@/lib/storage/uploadImage";
 const supabase = createClient();
 
 const AMENITIES = [
-  "Lift","Gym","Swimming Pool","Power Backup","Security",
-  "Garden","Club House","Visitor Parking","Children Play Area",
+  "Lift", "Gym", "Swimming Pool", "Power Backup", "24x7 Security", "CCTV",
+  "Intercom", "Garden", "Club House", "Visitor Parking", "Children Play Area",
+  "Jogging Track", "Community Hall", "Senior Citizen Area", "Rainwater Harvesting",
+  "Fire Safety", "Gas Pipeline", "Wi-Fi", "Air Conditioning", "Balcony",
+  "Modular Kitchen", "Pet Friendly", "Wheelchair Accessible", "EV Charging",
+  "Nearby Metro", "School Nearby", "Hospital Nearby", "Shopping Mall Nearby"
 ];
 
 export default function AddPropertyPage() {
@@ -57,6 +61,10 @@ const [selectedState,setSelectedState] = useState("");
   carpetArea:"",
   maintenance:"",
   preferredTenant:"",
+  rentFrequency:"Monthly",
+  hourlyRate:"",
+  dailyRate:"",
+  monthlyRate:"",
   gatedSecurity:false,
   metaTitle:"",
   metaDescription:"",
@@ -210,6 +218,13 @@ async function loadLocalities(cityId:string){
     if(step===3){
       if(form.listingType === "Rent" && !form.preferredTenant){
         return "Preferred tenant is required for rent listings.";
+      }
+
+      if (form.listingType === "Rent") {
+        const hasAtLeastOneRate = Boolean(form.hourlyRate || form.dailyRate || form.monthlyRate || form.price);
+        if (!hasAtLeastOneRate) {
+          return "Add at least one rent price (hourly, daily, monthly, or base price).";
+        }
       }
     }
     if(step===2){
@@ -366,8 +381,29 @@ const handleSubmit = async (e:React.FormEvent)=>{
             form.listingType === "Rent"
               ? form.preferredTenant
               : null,
+          rent_frequency:
+            form.listingType === "Rent"
+              ? [
+                  form.hourlyRate ? "Hourly" : null,
+                  form.dailyRate ? "Daily" : null,
+                  form.monthlyRate || form.price ? "Monthly" : null,
+                ].filter(Boolean)
+              : null,
+          hourly_rate:
+            form.listingType === "Rent" && form.hourlyRate
+              ? Number(form.hourlyRate)
+              : null,
+          daily_rate:
+            form.listingType === "Rent" && form.dailyRate
+              ? Number(form.dailyRate)
+              : null,
+          monthly_rate:
+            form.listingType === "Rent"
+              ? Number(form.monthlyRate || form.price)
+              : null,
           gated_security: form.gatedSecurity,
           amenities,
+
           city_id: form.cityId,
           locality_id: localityId,
           slug,
@@ -755,7 +791,14 @@ approved_at: isAdmin ? new Date().toISOString() : null
             preferredTenant:
               e.target.value === "Rent"
                 ? form.preferredTenant
-                : ""
+                : "",
+            rentFrequency:
+              e.target.value === "Rent"
+                ? form.rentFrequency
+                : "Monthly",
+            hourlyRate: e.target.value === "Rent" ? form.hourlyRate : "",
+            dailyRate: e.target.value === "Rent" ? form.dailyRate : "",
+            monthlyRate: e.target.value === "Rent" ? form.monthlyRate : ""
           })
         }
       >
@@ -972,6 +1015,38 @@ approved_at: isAdmin ? new Date().toISOString() : null
       </label>
     </div>
   </div>
+
+  {form.listingType === "Rent" && (
+    <div className="grid md:grid-cols-3 gap-6">
+      <div>
+        <label className="label">Hourly Rent (₹)</label>
+        <input
+          type="number"
+          className="input-premium"
+          value={form.hourlyRate}
+          onChange={(e)=> setForm({ ...form, hourlyRate: e.target.value })}
+        />
+      </div>
+      <div>
+        <label className="label">Daily Rent (₹)</label>
+        <input
+          type="number"
+          className="input-premium"
+          value={form.dailyRate}
+          onChange={(e)=> setForm({ ...form, dailyRate: e.target.value })}
+        />
+      </div>
+      <div>
+        <label className="label">Monthly Rent (₹)</label>
+        <input
+          type="number"
+          className="input-premium"
+          value={form.monthlyRate}
+          onChange={(e)=> setForm({ ...form, monthlyRate: e.target.value, price: e.target.value || form.price })}
+        />
+      </div>
+    </div>
+  )}
 
   {form.listingType === "Rent" && (
     <div>

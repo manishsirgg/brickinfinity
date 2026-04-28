@@ -144,6 +144,10 @@ export default async function RentPage({
       bathrooms,
       built_up_area,
       amenities,
+      hourly_rate,
+      daily_rate,
+      monthly_rate,
+      rent_frequency,
       furnishing_status,
       preferred_tenant,
       ownership_verified,
@@ -166,6 +170,8 @@ export default async function RentPage({
   if (keyword) {
     query = query.or(`
       property_type.ilike.%${keyword}%,
+      title.ilike.%${keyword}%,
+      description.ilike.%${keyword}%,
       cities.name.ilike.%${keyword}%,
       localities.name.ilike.%${keyword}%
     `);

@@ -56,18 +56,22 @@ export default function AdminDashboard() {
 
         supabase
           .from("documents")
-          .select("*", { count: "exact", head: true })
-          .not("property_id", "is", null)
-          .eq("document_type","ownership")
-          .eq("status", "pending"),
+          .select("id, properties!inner(status,ownership_verified), users!inner(role)", { count: "exact", head: true })
+          .eq("document_type", "ownership")
+          .eq("status", "pending")
+          .eq("properties.status", "pending")
+          .eq("properties.ownership_verified", false)
+          .neq("users.role", "admin"),
 
         /* ================= READY FOR ACTIVATION ================= */
 
         supabase
           .from("properties")
-          .select("*", { count: "exact", head: true })
-          .eq("status","pending")
+          .select("id, users:seller_id!inner(role)", { count: "exact", head: true })
+          .eq("status", "pending")
           .eq("ownership_verified", true)
+          .in("verification_status", ["ownership_approved", "approved"])
+          .neq("users.role", "admin")
           .is("deleted_at", null),
 
         /* ================= REPORTS ================= */
@@ -86,7 +90,7 @@ export default function AdminDashboard() {
 
         supabase
           .from("leads")
-          .select("id, users!inner(role)", { count: "exact", head: true })
+          .select("id, users:seller_id!inner(role)", { count: "exact", head: true })
           .eq("users.role", "admin")
 
       ])

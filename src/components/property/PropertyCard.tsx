@@ -6,20 +6,39 @@ type Props = {
   property: any
 }
 
+function getRentPriceDetails(property: any) {
+  const hourly = Number(property?.hourly_rate || 0)
+  const daily = Number(property?.daily_rate || 0)
+  const monthly = Number(property?.monthly_rate || property?.price || 0)
+
+  if (hourly > 0) return { amount: hourly, label: "/ hour" }
+  if (daily > 0) return { amount: daily, label: "/ day" }
+  return { amount: monthly, label: "/ month" }
+}
+
 export default function PropertyCard({ property }: Props) {
 
   const image =
     property?.property_images?.[0]?.image_url ||
     "/placeholder.jpg"
 
+  const isRent =
+    property?.listing_type?.toLowerCase() === "rent"
+
+  const rentPrice = isRent
+    ? getRentPriceDetails(property)
+    : null
+
+  const displayPrice = isRent
+    ? rentPrice?.amount || 0
+    : property?.price || 0
+
   const formattedPrice =
-    property?.price
-      ? new Intl.NumberFormat("en-IN").format(property.price)
-      : "0"
+    new Intl.NumberFormat("en-IN").format(displayPrice)
 
   const pricePerSqft =
     property?.built_up_area
-      ? Math.round(property.price / property.built_up_area)
+      ? Math.round(displayPrice / property.built_up_area)
       : null
 
   const isNew =
@@ -35,37 +54,24 @@ export default function PropertyCard({ property }: Props) {
       ? property.amenities.slice(0, 3)
       : []
 
-  const isRent =
-    property?.listing_type?.toLowerCase() === "rent"
-
-  /* ⭐ SAFE PROPERTY URL */
-
   const propertyUrl =
     property?.slug
       ? `/property/${property.id}/${property.slug}`
       : `/property/${property.id}`
 
   return (
-
     <Link
       href={propertyUrl}
       className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition duration-300 group block"
     >
-
-      {/* IMAGE */}
-
       <div className="relative overflow-hidden">
-
         <img
           src={image}
           className="h-56 md:h-60 w-full object-cover transition-transform duration-300 group-hover:scale-105"
           alt={property?.property_type || "Property"}
         />
 
-        {/* BADGES */}
-
         <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
-
           <span
             className={`text-white text-xs px-3 py-1 rounded-full ${
               isRent ? "bg-blue-600" : "bg-green-600"
@@ -91,7 +97,6 @@ export default function PropertyCard({ property }: Props) {
               New
             </span>
           )}
-
         </div>
 
         {isPopular && (
@@ -99,49 +104,36 @@ export default function PropertyCard({ property }: Props) {
             🔥 Popular
           </span>
         )}
-
       </div>
 
-      {/* CONTENT */}
-
       <div className="p-5 space-y-3">
-
-        {/* PRICE */}
-
         <div>
           <p className="text-xl font-bold text-primary">
             ₹ {formattedPrice}
             {isRent && (
               <span className="text-sm text-muted font-medium">
-                {" "} / month
+                {" "}{rentPrice?.label}
               </span>
             )}
           </p>
 
           {pricePerSqft && (
             <p className="text-xs text-muted">
-              ₹ {pricePerSqft} / sqft {isRent && "/ month"}
+              ₹ {pricePerSqft} / sqft {isRent ? rentPrice?.label : ""}
             </p>
           )}
         </div>
 
-        {/* TITLE */}
-
         <p className="font-semibold text-[var(--color-dark)]">
           {property?.property_type}
         </p>
-
-        {/* LOCATION */}
 
         <p className="text-sm text-muted">
           {property?.localities?.name},{" "}
           {property?.cities?.name}
         </p>
 
-        {/* SPECS */}
-
         <div className="flex gap-4 text-sm text-muted flex-wrap">
-
           {property?.bedrooms && (
             <span>🛏 {property.bedrooms}</span>
           )}
@@ -153,10 +145,7 @@ export default function PropertyCard({ property }: Props) {
           {property?.built_up_area && (
             <span>📐 {property.built_up_area} sqft</span>
           )}
-
         </div>
-
-        {/* AMENITIES */}
 
         {topAmenities.length > 0 && (
           <div className="flex flex-wrap gap-2 text-xs">
@@ -170,10 +159,7 @@ export default function PropertyCard({ property }: Props) {
             ))}
           </div>
         )}
-
       </div>
-
     </Link>
-
   )
 }
