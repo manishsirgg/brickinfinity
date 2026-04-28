@@ -62,11 +62,11 @@ export async function POST(req: Request) {
 
     const { data: seller } = await supabase
       .from("users")
-      .select("phone")
-      .eq("id", property.seller_id)
+      .select("phone, whatsapp_number")
+      .or(`id.eq.${property.seller_id},user_id.eq.${property.seller_id}`)
       .maybeSingle();
 
-    const phone = String(seller?.phone || "").replace(/\D/g, "");
+    const phone = String(seller?.phone || seller?.whatsapp_number || "").replace(/\D/g, "");
 
     if (!phone) {
       return NextResponse.json(

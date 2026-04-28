@@ -66,7 +66,19 @@ export async function POST(req: Request) {
       );
     }
 
-    if (seller_id && property.seller_id !== seller_id) {
+    const { data: sellerProfile } = await supabase
+      .from("users")
+      .select("id")
+      .or(`id.eq.${property.seller_id},user_id.eq.${property.seller_id}`)
+      .maybeSingle();
+
+    const resolvedSellerId = sellerProfile?.id || property.seller_id;
+
+    if (
+      seller_id &&
+      property.seller_id !== seller_id &&
+      resolvedSellerId !== seller_id
+    ) {
       return NextResponse.json(
         { error: "Seller mismatch" },
         { status: 400 }
@@ -96,7 +108,7 @@ export async function POST(req: Request) {
       .from("leads")
       .insert({
         property_id,
-        seller_id: property.seller_id,
+        seller_id: resolvedSellerId,
         buyer_name: name,
         buyer_phone: phone,
         buyer_email: email,
