@@ -172,22 +172,28 @@ export default function StickyContactPanel({
 
       await sendLead();
 
-      const { data, error } = await supabase.rpc(
-        "reveal_seller_phone",
-        {
-          p_property_id: propertyId,
-          p_buyer_phone: phone
-        }
-      );
+      const revealRes = await fetch("/api/leads/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_id: propertyId,
+          buyer_phone: phone
+        })
+      });
 
-      if(error) throw error;
+      if (!revealRes.ok) {
+        throw new Error("Reveal failed");
+      }
 
-      if(!data){
+      const payload = await revealRes.json();
+      const revealedPhone = payload?.phone;
+
+      if(!revealedPhone){
         setError("Seller phone cannot be revealed now.");
         return;
       }
 
-      setSellerPhone(data);
+      setSellerPhone(revealedPhone);
       setRevealed(true);
 
       setSuccess("Seller number revealed.");
