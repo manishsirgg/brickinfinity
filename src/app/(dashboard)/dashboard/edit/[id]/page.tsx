@@ -50,7 +50,7 @@ export default function EditPropertyPage() {
     const { data } =
       await supabase
         .from("states")
-        .select("id,name")
+        .select("id,name,public_id")
         .order("name");
 
     if(data) setStates(data);
@@ -64,7 +64,7 @@ export default function EditPropertyPage() {
     const { data } =
       await supabase
         .from("cities")
-        .select("id,name")
+        .select("id,name,public_id")
         .eq("state_id", stateId)
         .order("name");
 
@@ -77,7 +77,7 @@ export default function EditPropertyPage() {
     const { data } =
       await supabase
         .from("localities")
-        .select("id,name")
+        .select("id,name,public_id")
         .eq("city_id", cityId)
         .order("name");
 
@@ -578,7 +578,7 @@ export default function EditPropertyPage() {
           />
           <datalist id="edit-localities-list">
             {localities.map((locality)=>(
-              <option key={locality.id} value={locality.name} />
+              <option key={locality.id} value={locality.name}>{locality.public_id ? `#${locality.public_id} · ${locality.name}` : locality.name}</option>
             ))}
           </datalist>
 
