@@ -221,17 +221,9 @@ export default function EditPropertyPage() {
 
     if(existing) return existing.id;
 
-    const { data } =
-      await supabase
-        .from("localities")
-        .insert({
-          city_id:property.city_id,
-          name:normalizedName
-        })
-        .select("id")
-        .single();
-
-    return data?.id || null;
+    throw new Error(
+      "This locality is not available yet. Please select a locality from the list."
+    );
   }
 
   async function removeExistingImage(id:string){

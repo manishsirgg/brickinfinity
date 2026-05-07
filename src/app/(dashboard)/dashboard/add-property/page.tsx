@@ -209,25 +209,9 @@ async function loadLocalities(cityId:string){
 
     if (existing?.id) return existing.id;
 
-    const { data, error: insertError } =
-      await supabase
-      .from("localities")
-      .insert({
-        city_id: form.cityId,
-        name: normalizedLocalityName
-      })
-      .select("id")
-      .maybeSingle();
-
-    if(insertError){
-      throw new Error(insertError.message || "Could not create locality.");
-    }
-
-    if(!data?.id){
-      throw new Error("Could not resolve locality id. Please try selecting an existing locality.");
-    }
-
-    return data.id;
+    throw new Error(
+      "This locality is not available yet. Please select a locality from the list."
+    );
   }
 
   const validateStep=()=>{
