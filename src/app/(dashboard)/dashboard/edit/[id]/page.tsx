@@ -221,9 +221,35 @@ export default function EditPropertyPage() {
 
     if(existing) return existing.id;
 
-    throw new Error(
-      "This locality is not available yet. Please select a locality from the list."
-    );
+    const { data: created, error: createError } =
+      await supabase
+        .from("localities")
+        .insert({
+          city_id: property.city_id,
+          name: normalizedName,
+        })
+        .select("id")
+        .single();
+
+    if(createError){
+      const { data: retryExisting, error: retryError } =
+        await supabase
+          .from("localities")
+          .select("id")
+          .eq("city_id", property.city_id)
+          .ilike("name", normalizedName)
+          .maybeSingle();
+
+      if(retryError){
+        throw new Error(retryError.message || "Could not create locality.");
+      }
+
+      if(retryExisting) return retryExisting.id;
+
+      throw new Error(createError.message || "Could not create locality.");
+    }
+
+    return created.id;
   }
 
   async function removeExistingImage(id:string){
