@@ -111,7 +111,7 @@ export default function EditPropertyPage() {
           *,
           cities(id,state_id,name),
           localities(name),
-          property_images(id,image_url),
+          property_images(id,image_url,sort_order),
           property_videos(id,video_url)
         `)
         .eq("id",propertyId)
@@ -127,7 +127,7 @@ export default function EditPropertyPage() {
     setProperty({
       ...data,
       price:data.price?.toString() || "",
-      property_images:data.property_images || [],
+      property_images:(data.property_images || []).sort((a:any,b:any)=>(a.sort_order ?? 0)-(b.sort_order ?? 0)),
       property_videos:data.property_videos || []
     });
     setLocalityName(data.localities?.name || "");
@@ -266,6 +266,41 @@ export default function EditPropertyPage() {
     });
   }
 
+
+
+  async function moveImage(imageId:string,direction:-1|1){
+    const currentIndex = property.property_images.findIndex((img:any)=>img.id===imageId);
+    const targetIndex = currentIndex + direction;
+
+    if(currentIndex < 0 || targetIndex < 0 || targetIndex >= property.property_images.length){
+      return;
+    }
+
+    const reordered = [...property.property_images];
+    const [item] = reordered.splice(currentIndex,1);
+    reordered.splice(targetIndex,0,item);
+
+    setProperty({
+      ...property,
+      property_images: reordered.map((img:any,index:number)=>({
+        ...img,
+        sort_order:index
+      }))
+    });
+  }
+
+  async function persistImageOrder(){
+    if(!property?.property_images?.length) return;
+
+    const updates = property.property_images.map((img:any,index:number)=>(
+      supabase
+        .from("property_images")
+        .update({ sort_order:index })
+        .eq("id",img.id)
+    ));
+
+    await Promise.all(updates);
+  }
   /* ================= SAVE ================= */
 
   async function handleSave(){
@@ -357,6 +392,8 @@ export default function EditPropertyPage() {
         })
         .eq("id",propertyId);
 
+      await persistImageOrder();
+
       /* MEDIA */
 
       if(newImages.length>0 || video){
@@ -372,9 +409,10 @@ export default function EditPropertyPage() {
           await supabase
             .from("property_images")
             .insert(
-              media.images.map((url:string)=>({
+              media.images.map((url:string,index:number)=>({
                 property_id:propertyId,
-                image_url:url
+                image_url:url,
+                sort_order:(property.property_images?.length || 0) + index
               }))
             );
         }
@@ -721,11 +759,26 @@ export default function EditPropertyPage() {
             {property.property_images.map((img:any)=>(
               <div key={img.id} className="relative">
                 <img src={img.image_url} className="rounded-lg border"/>
-                <button type="button"
-                  onClick={()=>removeExistingImage(img.id)}
-                  className="absolute top-1 right-1 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                  Remove
-                </button>
+                {img.sort_order === 0 && (
+                  <span className="absolute left-1 top-1 bg-emerald-600 text-white text-[10px] px-2 py-1 rounded">Cover</span>
+                )}
+                <div className="absolute top-1 right-1 flex gap-1">
+                  <button type="button"
+                    onClick={()=>moveImage(img.id,-1)}
+                    className="bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    ↑
+                  </button>
+                  <button type="button"
+                    onClick={()=>moveImage(img.id,1)}
+                    className="bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    ↓
+                  </button>
+                  <button type="button"
+                    onClick={()=>removeExistingImage(img.id)}
+                    className="bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
           </div>
