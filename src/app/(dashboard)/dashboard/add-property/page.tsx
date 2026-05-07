@@ -209,33 +209,7 @@ async function loadLocalities(cityId:string){
 
     if (existing?.id) return existing.id;
 
-    const { data: created, error: createError } = await supabase
-      .from("localities")
-      .insert({
-        city_id: form.cityId,
-        name: normalizedLocalityName,
-      })
-      .select("id")
-      .single();
-
-    if (createError) {
-      const { data: retryExisting, error: retryError } = await supabase
-        .from("localities")
-        .select("id")
-        .eq("city_id", form.cityId)
-        .ilike("name", normalizedLocalityName)
-        .maybeSingle();
-
-      if (retryError) {
-        throw new Error(retryError.message || "Could not create locality.");
-      }
-
-      if (retryExisting?.id) return retryExisting.id;
-
-      throw new Error(createError.message || "Could not create locality.");
-    }
-
-    return created.id;
+    throw new Error("Please choose a locality from the suggested list. New localities are added by admins only.");
   }
 
   const validateStep=()=>{
