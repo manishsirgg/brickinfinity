@@ -79,7 +79,7 @@ async function loadStates(){
   const { data } =
     await supabase
       .from("states")
-      .select("id,name")
+      .select("id,name,public_id")
       .order("name");
 
   if(data) setStates(data);
@@ -105,7 +105,7 @@ async function loadCities(){
   const { data } =
     await supabase
       .from("cities")
-      .select("id,name")
+      .select("id,name,public_id")
       .eq("state_id", selectedState)
       .order("name");
 
@@ -115,7 +115,7 @@ async function loadCities(){
 async function loadLocalities(cityId:string){
   const { data } = await supabase
     .from("localities")
-    .select("id,name")
+    .select("id,name,public_id")
     .eq("city_id", cityId)
     .order("name");
 
@@ -763,7 +763,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
     />
     <datalist id="localities-list">
       {localities.map((locality)=>(
-        <option key={locality.id} value={locality.name} />
+        <option key={locality.id} value={locality.name}>{locality.public_id ? `#${locality.public_id} · ${locality.name}` : locality.name}</option>
       ))}
     </datalist>
   </div>
