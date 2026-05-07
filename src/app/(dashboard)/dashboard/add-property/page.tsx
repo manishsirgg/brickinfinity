@@ -463,9 +463,10 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
       if(media.images?.length){
 
-        const rows = media.images.map((url:string)=>({
+        const rows = media.images.map((url:string,index:number)=>({
           property_id: property.id,
-          image_url: url
+          image_url: url,
+          sort_order: index
         }));
 
         await supabaseAction

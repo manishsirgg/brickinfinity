@@ -33,7 +33,7 @@ const { data: property } = await supabase
     bedrooms,
     cities(name, states(name)),
     localities(name),
-    property_images(image_url)
+    property_images(image_url,sort_order)
   `)
   .eq("id", id)
   .eq("status", "active")
@@ -87,8 +87,10 @@ const seoTitle =
 property.meta_title ||
 `${property.bedrooms || ""} BHK ${property.property_type} for ${property.listing_type} in ${locality || city || ""} ${city || ""} ${state || ""} | BrickInfinity`;
 
+const orderedMetadataImages = (property.property_images || []).slice().sort((a:any,b:any)=>(a.sort_order ?? 0)-(b.sort_order ?? 0));
+
 const image =
-property.property_images?.[0]?.image_url ||
+orderedMetadataImages?.[0]?.image_url ||
 `${baseUrl}/og-default.jpg`;
 
 return{
@@ -124,7 +126,7 @@ const { data:property,error } = await supabase
 .from("properties")
 .select(`
 *,
-property_images(id,image_url),
+property_images(id,image_url,sort_order),
 property_videos(video_url),
 cities(name, states(name)),
 localities(name)
@@ -212,7 +214,7 @@ id,
 slug,
 price,
 property_type,
-property_images(image_url)
+property_images(image_url,sort_order)
 `)
 .eq("city_id",property.city_id)
 .eq("listing_type",property.listing_type)
@@ -245,6 +247,8 @@ new Intl.NumberFormat("en-IN")
 
 const mapQuery =
 encodeURIComponent(`${locality} ${city} ${state}`);
+
+property.property_images = (property.property_images || []).slice().sort((a:any,b:any)=>(a.sort_order ?? 0)-(b.sort_order ?? 0));
 
 /* ================= UI (UNCHANGED) ================= */
 
