@@ -179,31 +179,53 @@ async function loadLocalities(cityId:string){
   };
 
   async function ensureLocality(){
+    const normalizedLocalityName = localityName.trim();
+
+    if(!form.cityId){
+      throw new Error("Please select a city before continuing.");
+    }
+
+    if(!normalizedLocalityName){
+      throw new Error("Locality is required.");
+    }
+
     const selectedLocality = localities.find(
-      (locality)=>locality.name.toLowerCase() === localityName.toLowerCase()
+      (locality)=>locality.name.toLowerCase() === normalizedLocalityName.toLowerCase()
     );
 
-    if(selectedLocality) return selectedLocality.id;
+    if(selectedLocality?.id) return selectedLocality.id;
 
-    const { data: existing } =
+    const { data: existing, error: existingError } =
       await supabase
       .from("localities")
       .select("id")
       .eq("city_id", form.cityId)
-      .ilike("name", localityName)
+      .ilike("name", normalizedLocalityName)
       .maybeSingle();
 
-    if (existing) return existing.id;
+    if(existingError){
+      throw new Error(existingError.message || "Could not validate locality.");
+    }
 
-    const { data } =
+    if (existing?.id) return existing.id;
+
+    const { data, error: insertError } =
       await supabase
       .from("localities")
       .insert({
         city_id: form.cityId,
-        name: localityName
+        name: normalizedLocalityName
       })
-      .select()
-      .single();
+      .select("id")
+      .maybeSingle();
+
+    if(insertError){
+      throw new Error(insertError.message || "Could not create locality.");
+    }
+
+    if(!data?.id){
+      throw new Error("Could not resolve locality id. Please try selecting an existing locality.");
+    }
 
     return data.id;
   }
