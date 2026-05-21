@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Script from "next/script";
 import WhatsAppFloatingButton from "@/components/WhatsAppFloatingButton";
+import { Analytics } from "@vercel/analytics/next";
 
 const baseUrl = "https://brickinfinity.com";
 
@@ -151,6 +152,9 @@ export default function RootLayout({
             });
           `}
         </Script>
+
+        {/* Vercel Web Analytics */}
+        <Analytics />
       </body>
     </html>
   );
