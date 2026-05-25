@@ -15,7 +15,11 @@ export async function POST(req: Request) {
     if (!body.razorpay_order_id || !body.razorpay_payment_id || !body.property_id || !body.plan_id) return errorResponse("Missing required fields.", "INVALID_REQUEST", 400);
     const supabaseAdmin = createServiceClient();
 
-    const { data: existingOrder } = await supabaseAdmin.from("property_featured_orders").select("id").eq("razorpay_order_id", body.razorpay_order_id).maybeSingle();
+    const { data: existingOrder } = await supabaseAdmin
+      .from("property_featured_orders")
+      .select("id")
+      .or(`razorpay_order_id.eq.${body.razorpay_order_id},razorpay_payment_id.eq.${body.razorpay_payment_id}`)
+      .maybeSingle();
     if (existingOrder) return errorResponse("Local featured order already exists for this Razorpay order.", "DUPLICATE_RECOVERY_BLOCKED", 409, { existing_local_order_id: existingOrder.id });
 
     const payment = await getRazorpayClient().payments.fetch(body.razorpay_payment_id);
@@ -29,7 +33,11 @@ export async function POST(req: Request) {
     if (!isFeaturePromotableStatus(property.status)) return errorResponse("Only active or approved properties are eligible.", "PROPERTY_STATUS_NOT_ELIGIBLE", 400, { property_status: property.status });
     if (!property.seller_id) return errorResponse("Property owner could not be resolved.", "PROPERTY_OWNER_MISSING", 400);
 
-    const { data: plan, error: planError } = await supabaseAdmin.from("property_featured_plans").select("id, plan_key, name, duration_days, amount_paise, compare_at_amount_paise, currency, is_active").eq("id", body.plan_id).maybeSingle();
+    const { data: plan, error: planError } = await supabaseAdmin
+      .from("property_featured_plans")
+      .select("id, plan_key, name, duration_days, amount_paise, compare_at_amount_paise, currency, is_active")
+      .or(`id.eq.${body.plan_id},plan_key.eq.${body.plan_id}`)
+      .maybeSingle();
     if (planError || !plan || !plan.is_active) return errorResponse("Featured plan not found or inactive.", "PLAN_NOT_FOUND_OR_INACTIVE", 404);
 
     const amountMatches = Number(plan.amount_paise) === Number(safePayment.amount);

@@ -54,7 +54,7 @@ export default function FeaturedReconciliationPage() {
         <input value={selectedPropertyId} onChange={(e)=>setSelectedPropertyId(e.target.value)} className="w-full border rounded px-3 py-2" placeholder="Property ID (uuid)" />
         <button onClick={fetchPropertyPreview} className="px-2 py-1 rounded border">Fetch Property</button>
         {propertyPreview && <div className="text-xs border rounded p-2">Property: {propertyPreview.title || propertyPreview.id} | Status: {propertyPreview.status || '-'} | Owner: {propertyPreview.seller_id || '-'}</div>}
-        <select value={selectedPlanId} onChange={(e)=>setSelectedPlanId(e.target.value)} className="w-full border rounded px-3 py-2"><option value="">Select plan</option>{plans.map((pl)=><option key={pl.id} value={pl.id}>{pl.name} ({(pl.amount_paise/100).toFixed(2)} {pl.currency})</option>)}</select>
+        <select value={selectedPlanId} onChange={(e)=>setSelectedPlanId(e.target.value)} className="w-full border rounded px-3 py-2"><option value="">Select plan (id/key accepted by API)</option>{plans.map((pl)=><option key={pl.id} value={pl.id}>{pl.name} ({(pl.amount_paise/100).toFixed(2)} {pl.currency})</option>)}</select>
         {selectedPlan && <div className="text-xs text-gray-600">Plan selected: {selectedPlan.name} / {selectedPlan.plan_key} / {(selectedPlan.amount_paise/100).toFixed(2)} {selectedPlan.currency}</div>}
       </div>
       <div className="flex gap-2"><button disabled={!selectedPropertyId.trim() || !selectedPlanId} onClick={() => recover(row)} className="px-3 py-2 rounded bg-black text-white disabled:opacity-50">Recover & Activate</button><button onClick={() => setRecoveringPaymentId(null)} className="px-3 py-2 rounded border">Cancel</button></div>
