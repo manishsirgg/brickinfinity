@@ -26,7 +26,6 @@ interface CreateOrderResponse {
   razorpayOrderId: string;
   amount: number;
   currency: "INR";
-  keyId: string;
   plan: {
     name: string;
     durationDays: number;
@@ -52,6 +51,19 @@ interface FeaturedListingModalProps {
   canPromote: boolean;
   onClose: () => void;
   onVerified: (activation: VerifyResponse["activation"]) => void;
+}
+
+type ApiErrorResponse = {
+  ok?: false;
+  error?: string;
+  code?: string;
+  details?: unknown;
+};
+
+function getApiErrorMessage(value: unknown): string | null {
+  if (!value || typeof value !== "object" || !("error" in value)) return null;
+  const maybeError = (value as { error?: unknown }).error;
+  return typeof maybeError === "string" && maybeError.trim().length > 0 ? maybeError : null;
 }
 
 type RazorpayHandlerResponse = {
@@ -127,16 +139,18 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
       const createOrderResponse = await fetch("/api/property-featured/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyId, planKey: plan.plan_key }),
+        body: JSON.stringify({ propertyId, planId: plan.id }),
       });
-      const createOrderJson = await createOrderResponse.json();
+      const createOrderJson = (await createOrderResponse.json()) as CreateOrderResponse | ApiErrorResponse;
       if (!createOrderResponse.ok || !createOrderJson?.ok) {
-        throw new Error(createOrderJson?.message || "Unable to create payment order.");
+        throw new Error(getApiErrorMessage(createOrderJson) || "Unable to create payment order.");
       }
       const createOrderData = createOrderJson as CreateOrderResponse;
+      const checkoutKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!checkoutKey) throw new Error("Payment gateway key is missing. Please contact support.");
 
       const razorpay = new window.Razorpay({
-        key: createOrderData.keyId,
+        key: checkoutKey,
         amount: createOrderData.amount,
         currency: createOrderData.currency,
         name: "Brick Infinity",
@@ -162,9 +176,9 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
                 razorpay_signature: paymentResponse.razorpay_signature,
               }),
             });
-            const verifyJson = await verifyResponse.json();
+            const verifyJson = (await verifyResponse.json()) as VerifyResponse | ApiErrorResponse;
             if (!verifyResponse.ok || !verifyJson?.ok) {
-              throw new Error(verifyJson?.message || "Payment verification failed. If money was deducted, please contact support.");
+              throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed. If money was deducted, please contact support.");
             }
             const verifyData = verifyJson as VerifyResponse;
             onVerified(verifyData.activation);

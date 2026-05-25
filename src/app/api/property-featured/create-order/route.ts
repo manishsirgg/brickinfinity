@@ -5,8 +5,19 @@ import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
 
 type CreateOrderBody = {
   propertyId?: string;
-  planKey?: string;
+  planId?: string;
 };
+
+function errorResponse(message: string, code: string, status: number, details?: Record<string, unknown>) {
+  return NextResponse.json(
+    {
+      error: message,
+      code,
+      ...(details ? { details } : {}),
+    },
+    { status }
+  );
+}
 
 export async function POST(req: Request) {
   try {
@@ -16,26 +27,22 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json(
-        { ok: false, error: "Please login to promote your property." },
-        { status: 401 }
-      );
+      return errorResponse("Please login to promote your property.", "UNAUTHENTICATED", 401);
     }
 
     const body = (await req.json()) as CreateOrderBody;
+    console.info("[property-featured/create-order] payload received", {
+      propertyId: body?.propertyId,
+      planId: body?.planId,
+      authUserId: user.id,
+    });
 
     if (!body.propertyId) {
-      return NextResponse.json(
-        { ok: false, error: "Property ID is required." },
-        { status: 400 }
-      );
+      return errorResponse("Property ID is required.", "PROPERTY_ID_REQUIRED", 400);
     }
 
-    if (!body.planKey) {
-      return NextResponse.json(
-        { ok: false, error: "Featured plan is required." },
-        { status: 400 }
-      );
+    if (!body.planId) {
+      return errorResponse("Featured plan is required.", "PLAN_ID_REQUIRED", 400);
     }
 
     const { data: appUser, error: appUserError } = await supabase
@@ -44,11 +51,14 @@ export async function POST(req: Request) {
       .eq("user_id", user.id)
       .maybeSingle();
 
+    console.info("[property-featured/create-order] authenticated profile lookup", {
+      authUserId: user.id,
+      profileId: appUser?.id ?? null,
+      profileLookupError: appUserError?.message ?? null,
+    });
+
     if (appUserError || !appUser) {
-      return NextResponse.json(
-        { ok: false, error: "User profile not found." },
-        { status: 404 }
-      );
+      return errorResponse("User profile not found.", "PROFILE_NOT_FOUND", 404);
     }
 
     const { data: property, error: propertyError } = await supabase
@@ -57,48 +67,65 @@ export async function POST(req: Request) {
       .eq("id", body.propertyId)
       .maybeSingle();
 
+    console.info("[property-featured/create-order] property lookup result", {
+      propertyId: body.propertyId,
+      found: Boolean(property),
+      lookupError: propertyError?.message ?? null,
+      propertyStatus: property?.status ?? null,
+      propertyOwnerId: property?.seller_id ?? null,
+      deletedAt: property?.deleted_at ?? null,
+    });
+
     if (propertyError || !property) {
-      return NextResponse.json(
-        { ok: false, error: "Property not found." },
-        { status: 404 }
-      );
+      return errorResponse("Property not found.", "PROPERTY_NOT_FOUND", 404);
     }
 
     if (property.seller_id !== appUser.id) {
-      return NextResponse.json(
-        { ok: false, error: "You can promote only your own property." },
-        { status: 403 }
-      );
-    }
-
-    if (!isFeaturePromotableStatus(property.status)) {
-      return NextResponse.json(
-        { ok: false, error: "Only active or approved properties can be promoted as Featured." },
-        { status: 400 }
-      );
+      return errorResponse("You can promote only your own property.", "PROPERTY_NOT_OWNED", 403);
     }
 
     if (property.deleted_at !== null) {
-      return NextResponse.json(
-        { ok: false, error: "Deleted properties cannot be promoted." },
-        { status: 400 }
-      );
+      return errorResponse("Deleted properties cannot be promoted.", "PROPERTY_DELETED", 400);
+    }
+
+    if (!isFeaturePromotableStatus(property.status)) {
+      return errorResponse("Only active or approved properties can be promoted as Featured.", "PROPERTY_STATUS_NOT_ELIGIBLE", 400, {
+        status: property.status,
+      });
     }
 
     const { data: plan, error: planError } = await supabase
       .from("property_featured_plans")
       .select("id, plan_key, name, duration_days, amount_paise, compare_at_amount_paise, currency, badge, is_active")
-      .eq("plan_key", body.planKey)
+      .eq("id", body.planId)
       .maybeSingle();
 
+    console.info("[property-featured/create-order] selected plan lookup", {
+      planId: body.planId,
+      found: Boolean(plan),
+      planLookupError: planError?.message ?? null,
+      isActive: plan?.is_active ?? null,
+      planKey: plan?.plan_key ?? null,
+      amountPaise: plan?.amount_paise ?? null,
+    });
+
     if (planError || !plan || !plan.is_active) {
-      return NextResponse.json(
-        { ok: false, error: "Featured plan not found or inactive." },
-        { status: 404 }
-      );
+      return errorResponse("Featured plan not found or inactive.", "PLAN_NOT_FOUND_OR_INACTIVE", 404);
     }
 
-    const razorpayOrder = await getRazorpayClient().orders.create({
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+    console.info("[property-featured/create-order] razorpay env check", {
+      hasKeyId: Boolean(razorpayKeyId),
+      hasKeySecret: Boolean(razorpayKeySecret),
+    });
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      return errorResponse("Razorpay is not configured on the server.", "RAZORPAY_NOT_CONFIGURED", 500);
+    }
+
+    let razorpayOrder;
+    try {
+      razorpayOrder = await getRazorpayClient().orders.create({
       amount: plan.amount_paise,
       currency: "INR",
       receipt: `featured_${property.id}_${Date.now()}`,
@@ -109,6 +136,16 @@ export async function POST(req: Request) {
         plan_key: plan.plan_key,
       },
     });
+      console.info("[property-featured/create-order] razorpay order created", {
+        razorpayOrderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        status: razorpayOrder.status,
+      });
+    } catch (razorpayError) {
+      console.error("[property-featured/create-order] razorpay order creation failed", razorpayError);
+      return errorResponse("Unable to create payment order.", "RAZORPAY_ORDER_CREATE_FAILED", 502);
+    }
 
     const { data: insertedOrder, error: orderInsertError } = await supabase
       .from("property_featured_orders")
@@ -144,7 +181,6 @@ export async function POST(req: Request) {
         razorpayOrderId: razorpayOrder.id,
         amount: plan.amount_paise,
         currency: "INR",
-        keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         plan: {
           name: plan.name,
           durationDays: plan.duration_days,
@@ -155,9 +191,6 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("[property-featured/create-order]", error);
-    return NextResponse.json(
-      { ok: false, error: "Unable to create featured listing order." },
-      { status: 500 }
-    );
+    return errorResponse("Unable to create featured listing order.", "CREATE_ORDER_FAILED", 500);
   }
 }
