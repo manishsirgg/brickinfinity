@@ -17,6 +17,14 @@ const AMENITIES = [
   "Nearby Metro", "School Nearby", "Hospital Nearby", "Shopping Mall Nearby"
 ];
 
+function isRentListingType(value?: string | null) {
+  return ["rent", "rental", "lease"].includes(String(value || "").toLowerCase());
+}
+
+function isSaleListingType(value?: string | null) {
+  return ["sell", "sale"].includes(String(value || "").toLowerCase());
+}
+
 export default function EditPropertyPage() {
 
   const router = useRouter();
@@ -127,6 +135,9 @@ export default function EditPropertyPage() {
     setProperty({
       ...data,
       price:data.price?.toString() || "",
+      monthly_rate:data.monthly_rate?.toString() || (isRentListingType(data.listing_type) ? data.price?.toString() || "" : ""),
+      daily_rate:data.daily_rate?.toString() || "",
+      hourly_rate:data.hourly_rate?.toString() || "",
       property_images:(data.property_images || []).sort((a:any,b:any)=>(a.sort_order ?? 0)-(b.sort_order ?? 0)),
       property_videos:data.property_videos || []
     });
@@ -324,29 +335,41 @@ export default function EditPropertyPage() {
         property.status==="rejected";
 
       const preferredTenant =
-        property.listing_type==="Rent"
+        isRentListingType(property.listing_type)
         ? property.preferred_tenant || null
         : null;
 
-      if(property.listing_type === "Rent" && !preferredTenant){
+      if(isRentListingType(property.listing_type) && !preferredTenant){
         throw new Error("Preferred tenant is required for rent listings.");
       }
 
-      if (property.listing_type === "Rent") {
-        const hasRate = Boolean(
-          property.hourly_rate || property.daily_rate || property.monthly_rate || property.price
-        );
+      if (isRentListingType(property.listing_type)) {
+        const hasRate = [property.monthly_rate, property.daily_rate, property.hourly_rate].some((value)=>{
+          const parsed = Number(value);
+          return Number.isFinite(parsed) && parsed > 0;
+        });
         if (!hasRate) {
-          throw new Error("Provide at least one rent rate (hourly, daily, or monthly).");
+          throw new Error("Please enter at least one rent amount.");
         }
       }
+      if (isSaleListingType(property.listing_type) && !(Number(property.price) > 0)) {
+        throw new Error("Please enter the expected selling price.");
+      }
+
+      const isRentListing = isRentListingType(property.listing_type);
+      const monthlyRate = property.monthly_rate ? Number(property.monthly_rate) : null;
+      const dailyRate = property.daily_rate ? Number(property.daily_rate) : null;
+      const hourlyRate = property.hourly_rate ? Number(property.hourly_rate) : null;
+      const canonicalPrice = isRentListing
+        ? (monthlyRate ?? dailyRate ?? hourlyRate)
+        : Number(property.price);
 
       await supabase
         .from("properties")
         .update({
           title:property.title,
           description:property.description,
-          price:Number(property.price),
+          price:canonicalPrice,
           city_id:property.city_id,
           locality_id:localityId || null,
           listing_type:property.listing_type,
@@ -365,25 +388,16 @@ export default function EditPropertyPage() {
           amenities,
           preferred_tenant:preferredTenant,
           rent_frequency:
-            property.listing_type === "Rent"
+            isRentListing
               ? [
-                  property.hourly_rate ? "Hourly" : null,
-                  property.daily_rate ? "Daily" : null,
-                  property.monthly_rate || property.price ? "Monthly" : null,
+                  hourlyRate ? "Hourly" : null,
+                  dailyRate ? "Daily" : null,
+                  monthlyRate ? "Monthly" : null,
                 ].filter(Boolean)
               : null,
-          hourly_rate:
-            property.listing_type === "Rent" && property.hourly_rate
-              ? Number(property.hourly_rate)
-              : null,
-          daily_rate:
-            property.listing_type === "Rent" && property.daily_rate
-              ? Number(property.daily_rate)
-              : null,
-          monthly_rate:
-            property.listing_type === "Rent"
-              ? Number(property.monthly_rate || property.price)
-              : null,
+          hourly_rate: isRentListing ? hourlyRate : null,
+          daily_rate: isRentListing ? dailyRate : null,
+          monthly_rate: isRentListing ? monthlyRate : null,
           status:shouldMoveToPending ? "pending" : property.status,
           verification_status:shouldMoveToPending
             ? "edited_requires_review"
@@ -515,12 +529,24 @@ export default function EditPropertyPage() {
             }
           />
 
-          <input type="number" className="input-premium"
-            value={property.price}
-            onChange={(e)=>
-              setProperty({...property,price:e.target.value})
-            }
-          />
+          {isSaleListingType(property.listing_type) ? (
+            <div>
+              <label className="label">Expected Selling Price (₹)</label>
+              <p className="text-sm text-gray-500 mb-2">
+                Enter the total expected sale price of the property.
+              </p>
+              <input type="number" className="input-premium"
+                value={property.price}
+                onChange={(e)=>
+                  setProperty({...property,price:e.target.value})
+                }
+              />
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Rent amount will be added in the Property Details step.
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-4">
             <select className="input-premium"
@@ -528,7 +554,12 @@ export default function EditPropertyPage() {
               onChange={(e)=>
                 setProperty({
                   ...property,
-                  listing_type:e.target.value
+                  listing_type:e.target.value,
+                  preferred_tenant:isRentListingType(e.target.value) ? property.preferred_tenant : "",
+                  rent_frequency:isRentListingType(e.target.value) ? property.rent_frequency : null,
+                  hourly_rate:isRentListingType(e.target.value) ? property.hourly_rate : "",
+                  daily_rate:isRentListingType(e.target.value) ? property.daily_rate : "",
+                  monthly_rate:isRentListingType(e.target.value) ? property.monthly_rate : ""
                 })
               }
             >
@@ -679,7 +710,14 @@ export default function EditPropertyPage() {
             </select>
           </div>
 
-          {property.listing_type === "Rent" && (
+          {isRentListingType(property.listing_type) && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                Enter at least one rent amount. Monthly rent is recommended for normal rental listings.
+              </p>
+              <p className="text-sm text-gray-500">
+                Monthly rent is recommended for regular rental listings. Daily or hourly rent can be used for short-term spaces.
+              </p>
             <div className="grid md:grid-cols-3 gap-4">
               <input
                 type="number"
@@ -699,13 +737,14 @@ export default function EditPropertyPage() {
                 type="number"
                 className="input-premium"
                 placeholder="Monthly Rent (₹)"
-                value={property.monthly_rate || property.price || ""}
-                onChange={(e)=> setProperty({...property, monthly_rate:e.target.value, price:e.target.value || property.price})}
+                value={property.monthly_rate || ""}
+                onChange={(e)=> setProperty({...property, monthly_rate:e.target.value})}
               />
+            </div>
             </div>
           )}
 
-          {property.listing_type === "Rent" && (
+          {isRentListingType(property.listing_type) && (
             <select className="input-premium"
               value={property.preferred_tenant || ""}
               onChange={(e)=> setProperty({...property, preferred_tenant:e.target.value})}

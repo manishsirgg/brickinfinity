@@ -17,6 +17,14 @@ const AMENITIES = [
   "Nearby Metro", "School Nearby", "Hospital Nearby", "Shopping Mall Nearby"
 ];
 
+function isRentListingType(value?: string | null) {
+  return ["rent", "rental", "lease"].includes(String(value || "").toLowerCase());
+}
+
+function isSaleListingType(value?: string | null) {
+  return ["sell", "sale"].includes(String(value || "").toLowerCase());
+}
+
 export default function AddPropertyPage() {
 
   const router = useRouter();
@@ -244,17 +252,20 @@ async function loadLocalities(cityId:string){
     if(step===1){
       if(form.title.length<10) return "Title must be at least 10 characters.";
       if(!form.description) return "Description required.";
-      if(!form.price) return "Enter price.";
+      if(isSaleListingType(form.listingType) && !form.price) return "Please enter the expected selling price.";
     }
     if(step===3){
-      if(form.listingType === "Rent" && !form.preferredTenant){
+      if(isRentListingType(form.listingType) && !form.preferredTenant){
         return "Preferred tenant is required for rent listings.";
       }
 
-      if (form.listingType === "Rent") {
-        const hasAtLeastOneRate = Boolean(form.hourlyRate || form.dailyRate || form.monthlyRate || form.price);
+      if (isRentListingType(form.listingType)) {
+        const hasAtLeastOneRate = [form.monthlyRate, form.dailyRate, form.hourlyRate].some((value)=>{
+          const parsed = Number(value);
+          return Number.isFinite(parsed) && parsed > 0;
+        });
         if (!hasAtLeastOneRate) {
-          return "Add at least one rent price (hourly, daily, monthly, or base price).";
+          return "Please enter at least one rent amount.";
         }
       }
     }
@@ -388,6 +399,14 @@ const handleSubmit = async (e:React.FormEvent)=>{
 
     /* ===== CREATE PROPERTY ===== */
 
+    const isRentListing = isRentListingType(form.listingType);
+    const monthlyRate = form.monthlyRate ? Number(form.monthlyRate) : null;
+    const dailyRate = form.dailyRate ? Number(form.dailyRate) : null;
+    const hourlyRate = form.hourlyRate ? Number(form.hourlyRate) : null;
+    const priceValue = isRentListing
+      ? (monthlyRate ?? dailyRate ?? hourlyRate)
+      : Number(form.price);
+
     const { data:property, error:propertyError } =
       await supabaseAction
         .from("properties")
@@ -395,7 +414,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
           seller_id: profileId,
           title: form.title,
           description: form.description,
-          price: Number(form.price),
+          price: priceValue,
           area_sqft: form.areaSqft || null,
           property_type: form.propertyType,
           listing_type: form.listingType,
@@ -409,29 +428,20 @@ const handleSubmit = async (e:React.FormEvent)=>{
           maintenance_charges: form.maintenance || null,
           ...seoFields,
           preferred_tenant:
-            form.listingType === "Rent"
+            isRentListing
               ? form.preferredTenant
               : null,
           rent_frequency:
-            form.listingType === "Rent"
+            isRentListing
               ? [
-                  form.hourlyRate ? "Hourly" : null,
-                  form.dailyRate ? "Daily" : null,
-                  form.monthlyRate || form.price ? "Monthly" : null,
+                  hourlyRate ? "Hourly" : null,
+                  dailyRate ? "Daily" : null,
+                  monthlyRate ? "Monthly" : null,
                 ].filter(Boolean)
               : null,
-          hourly_rate:
-            form.listingType === "Rent" && form.hourlyRate
-              ? Number(form.hourlyRate)
-              : null,
-          daily_rate:
-            form.listingType === "Rent" && form.dailyRate
-              ? Number(form.dailyRate)
-              : null,
-          monthly_rate:
-            form.listingType === "Rent"
-              ? Number(form.monthlyRate || form.price)
-              : null,
+          hourly_rate: isRentListing ? hourlyRate : null,
+          daily_rate: isRentListing ? dailyRate : null,
+          monthly_rate: isRentListing ? monthlyRate : null,
           gated_security: form.gatedSecurity,
           amenities,
 
@@ -662,25 +672,31 @@ approved_at: isAdmin ? new Date().toISOString() : null
                     />
                   </div>
 
-                  <div>
-                    <label className="label">Price</label>
-
-                    <input
-                      type="number"
-                      className="input-premium"
-                      value={form.price}
-                      onChange={(e)=>
-                        setForm({...form,price:e.target.value})
-                      }
-                    />
-
-                    {form.price && (
-                      <div className="text-sm text-gray-500">
-                        ₹ {formatPrice(form.price)}
-                      </div>
-                    )}
-
-                  </div>
+                  {isSaleListingType(form.listingType) ? (
+                    <div>
+                      <label className="label">Expected Selling Price (₹)</label>
+                      <p className="text-sm text-gray-500 mb-2">
+                        Enter the total expected sale price of the property.
+                      </p>
+                      <input
+                        type="number"
+                        className="input-premium"
+                        value={form.price}
+                        onChange={(e)=>
+                          setForm({...form,price:e.target.value})
+                        }
+                      />
+                      {form.price && (
+                        <div className="text-sm text-gray-500">
+                          ₹ {formatPrice(form.price)}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Rent amount will be added in the Property Details step.
+                    </div>
+                  )}
 
                 </section>
 
@@ -817,20 +833,20 @@ approved_at: isAdmin ? new Date().toISOString() : null
         className="input-premium"
         value={form.listingType}
         onChange={(e)=>
-          setForm({
-            ...form,
-            listingType:e.target.value,
-            preferredTenant:
-              e.target.value === "Rent"
+            setForm({
+              ...form,
+              listingType:e.target.value,
+              preferredTenant:
+              isRentListingType(e.target.value)
                 ? form.preferredTenant
                 : "",
-            rentFrequency:
-              e.target.value === "Rent"
+              rentFrequency:
+              isRentListingType(e.target.value)
                 ? form.rentFrequency
                 : "Monthly",
-            hourlyRate: e.target.value === "Rent" ? form.hourlyRate : "",
-            dailyRate: e.target.value === "Rent" ? form.dailyRate : "",
-            monthlyRate: e.target.value === "Rent" ? form.monthlyRate : ""
+            hourlyRate: isRentListingType(e.target.value) ? form.hourlyRate : "",
+            dailyRate: isRentListingType(e.target.value) ? form.dailyRate : "",
+            monthlyRate: isRentListingType(e.target.value) ? form.monthlyRate : ""
           })
         }
       >
@@ -1048,7 +1064,14 @@ approved_at: isAdmin ? new Date().toISOString() : null
     </div>
   </div>
 
-  {form.listingType === "Rent" && (
+  {isRentListingType(form.listingType) && (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-600">
+        Enter at least one rent amount. Monthly rent is recommended for normal rental listings.
+      </p>
+      <p className="text-sm text-gray-500">
+        Monthly rent is recommended for regular rental listings. Daily or hourly rent can be used for short-term spaces.
+      </p>
     <div className="grid md:grid-cols-3 gap-6">
       <div>
         <label className="label">Hourly Rent (₹)</label>
@@ -1074,13 +1097,14 @@ approved_at: isAdmin ? new Date().toISOString() : null
           type="number"
           className="input-premium"
           value={form.monthlyRate}
-          onChange={(e)=> setForm({ ...form, monthlyRate: e.target.value, price: e.target.value || form.price })}
+          onChange={(e)=> setForm({ ...form, monthlyRate: e.target.value })}
         />
       </div>
     </div>
+    </div>
   )}
 
-  {form.listingType === "Rent" && (
+  {isRentListingType(form.listingType) && (
     <div>
       <label className="label">
         Preferred Tenant
