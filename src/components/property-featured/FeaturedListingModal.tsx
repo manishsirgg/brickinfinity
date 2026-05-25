@@ -50,6 +50,9 @@ interface FeaturedListingModalProps {
   isOpen: boolean;
   propertyId: string | null;
   propertyTitle?: string;
+  isFeaturedActive?: boolean;
+  activeFeaturedPlanKey?: string | null;
+  hasScheduledExtension?: boolean;
   canPromote: boolean;
   onClose: () => void;
   onVerified: (activation: VerifyResponse["activation"]) => void;
@@ -103,7 +106,17 @@ async function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle, canPromote, onClose, onVerified }: FeaturedListingModalProps) {
+export default function FeaturedListingModal({
+  isOpen,
+  propertyId,
+  propertyTitle,
+  isFeaturedActive = false,
+  activeFeaturedPlanKey = null,
+  hasScheduledExtension = false,
+  canPromote,
+  onClose,
+  onVerified,
+}: FeaturedListingModalProps) {
   const [plans, setPlans] = useState<FeaturedPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +126,18 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
   const [isVerifying, setIsVerifying] = useState(false);
 
   const sortedPlans = useMemo(() => [...plans].sort((a, b) => a.sort_order - b.sort_order), [plans]);
+  const activePlan = useMemo(() => {
+    if (!isFeaturedActive || !activeFeaturedPlanKey) return null;
+    return sortedPlans.find((plan) => plan.plan_key === activeFeaturedPlanKey) ?? null;
+  }, [isFeaturedActive, activeFeaturedPlanKey, sortedPlans]);
+
+  function getPlanDisabledReason(plan: FeaturedPlan): "current" | "lower" | null {
+    if (!isFeaturedActive || !activePlan) return null;
+    if (plan.id === activePlan.id || plan.plan_key === activePlan.plan_key) return "current";
+    if (plan.sort_order <= activePlan.sort_order) return "lower";
+    if (plan.amount_paise <= activePlan.amount_paise) return "lower";
+    return null;
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -140,6 +165,7 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
 
   async function handlePlanPurchase(plan: FeaturedPlan) {
     if (!propertyId || !canPromote) return;
+    if (getPlanDisabledReason(plan)) return;
     if (processingPlanKey || isCheckoutOpen || isVerifying) return;
     setProcessingPlanKey(plan.plan_key);
     setError(null);
@@ -162,22 +188,10 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
       if (!checkoutKey) {
         setError("Razorpay checkout key is not configured.");
         setIsCheckoutOpen(false);
-      setIsVerifying(false);
-      setProcessingPlanKey(null);
+        setIsVerifying(false);
+        setProcessingPlanKey(null);
         return;
       }
-
-      console.info("[property-featured] checkout init", {
-        hasCheckoutKey: Boolean(checkoutKey),
-        checkoutKeyPrefix: checkoutKey.slice(0, 10),
-        razorpayOrderId: createOrderData.razorpayOrderId,
-        amount: createOrderData.amount,
-        currency: createOrderData.currency,
-        propertyId,
-        planId: plan.id,
-      });
-
-      const prefill: { name?: string; email?: string; contact?: string } = {};
 
       const razorpay = new window.Razorpay({
         key: checkoutKey,
@@ -186,7 +200,6 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
         name: "Brick Infinity",
         description: `${createOrderData.plan.name} - Featured Listing`,
         order_id: createOrderData.razorpayOrderId,
-        ...(Object.keys(prefill).length > 0 ? { prefill } : {}),
         theme: { color: "#0f172a" },
         notes: { featured_order_id: createOrderData.featuredOrderId },
         modal: {
@@ -212,21 +225,15 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
               }),
             });
             const verifyJson = (await verifyResponse.json()) as VerifyResponse | ApiErrorResponse;
-            if (!verifyResponse.ok || !verifyJson?.ok) {
-              throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed. If money was deducted, please contact support.");
-            }
+            if (!verifyResponse.ok || !verifyJson?.ok) throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed.");
             const verifyData = verifyJson as VerifyResponse;
             const status = verifyData.activationStatus ?? verifyData.status;
-            if (status === "scheduled") {
-              setSuccessMessage("Payment successful. Your Featured extension has been scheduled after your current active period.");
-            } else if (status === "active") {
-              setSuccessMessage("Payment successful. Your listing is now Featured.");
-            } else {
-              setSuccessMessage("Payment received. Your Featured activation is being finalized. Please refresh after a few moments.");
-            }
+            if (status === "scheduled") setSuccessMessage("Payment successful. Your Featured extension has been scheduled after your current active period.");
+            else if (status === "active") setSuccessMessage("Payment successful. Your listing is now Featured.");
+            else setSuccessMessage("Payment received. Your Featured activation is being finalized. Please refresh after a few moments.");
             onVerified(verifyData.activation);
           } catch (verifyErr) {
-            setError(verifyErr instanceof Error ? verifyErr.message : "Payment verification failed. If money was deducted, please contact support.");
+            setError(verifyErr instanceof Error ? verifyErr.message : "Payment verification failed.");
           } finally {
             setIsVerifying(false);
             setIsCheckoutOpen(false);
@@ -234,31 +241,8 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
           }
         },
       });
-      razorpay.on("payment.failed", (response) => {
-        const typedResponse = response as {
-          error?: {
-            code?: string;
-            description?: string;
-            source?: string;
-            step?: string;
-            reason?: string;
-            metadata?: {
-              order_id?: string;
-              payment_id?: string;
-            };
-          };
-        };
-        console.error("[property-featured] razorpay payment failed", {
-          code: typedResponse?.error?.code,
-          description: typedResponse?.error?.description,
-          source: typedResponse?.error?.source,
-          step: typedResponse?.error?.step,
-          reason: typedResponse?.error?.reason,
-          order_id: typedResponse?.error?.metadata?.order_id,
-          payment_id: typedResponse?.error?.metadata?.payment_id,
-        });
+      razorpay.on("payment.failed", () => {
         setError("Payment failed. No amount has been activated for Featured Listing. Please try again.");
-        void fetch("/api/property-featured/payment-failure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ featuredOrderId: createOrderData.featuredOrderId, razorpay_order_id: typedResponse?.error?.metadata?.order_id, razorpay_payment_id: typedResponse?.error?.metadata?.payment_id, reason: typedResponse?.error?.description || typedResponse?.error?.reason || "Razorpay payment failed" }) });
         setIsCheckoutOpen(false);
         setProcessingPlanKey(null);
       });
@@ -271,5 +255,71 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
   }
 
   if (!isOpen) return null;
-  return <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl md:text-2xl font-semibold">Choose Featured Listing Plan</h2><p className="text-sm text-muted mt-1">{propertyTitle || "Select a plan to boost this property's visibility."}</p></div><Button variant="secondary" onClick={onClose} disabled={Boolean(processingPlanKey)}>Close</Button></div>{!canPromote && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only active or approved properties can be promoted.</p>}{error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}{successMessage && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMessage}</p>}{loadingPlans && <p className="text-muted">Loading featured plans...</p>}{!loadingPlans && sortedPlans.length === 0 && !error && <p className="text-muted">No plans available right now.</p>}<div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{sortedPlans.map((plan) => {const hasCompareAt = Boolean(plan.compare_at_amount_paise && plan.compare_at_amount_paise > plan.amount_paise);return <Card key={plan.id} className="p-5 space-y-3 border border-slate-200"><div className="flex flex-wrap gap-2">{plan.badge && <span className="badge-secondary">{plan.badge}</span>}{plan.is_popular && <span className="badge-success">Most Popular</span>}{plan.is_best_value && <span className="badge-warning">Best Value</span>}</div><h3 className="text-lg font-semibold">{plan.name}</h3><p className="text-sm text-muted">{plan.duration_days} days visibility</p><div><p className="text-2xl font-bold text-primary">{formatCurrency(plan.amount_paise)}</p>{hasCompareAt && <p className="text-sm text-muted line-through">{formatCurrency(plan.compare_at_amount_paise as number)}</p>}</div>{plan.description && <p className="text-sm text-muted">{plan.description}</p>}{Array.isArray(plan.benefits) && plan.benefits.length > 0 && <ul className="text-sm list-disc pl-5 space-y-1">{plan.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>}<Button className="w-full" disabled={!canPromote || Boolean(processingPlanKey) || isCheckoutOpen || isVerifying} onClick={() => handlePlanPurchase(plan)}>{processingPlanKey === plan.plan_key || isCheckoutOpen || isVerifying ? "Processing..." : "Select & Pay"}</Button></Card>;})}</div></div></div>;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl md:text-2xl font-semibold">Choose Featured Listing Plan</h2>
+            <p className="text-sm text-muted mt-1">{propertyTitle || "Select a plan to boost this property's visibility."}</p>
+          </div>
+          <Button variant="secondary" onClick={onClose} disabled={Boolean(processingPlanKey)}>Close</Button>
+        </div>
+
+        {!canPromote && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only active or approved properties can be promoted.</p>}
+        {isFeaturedActive && activePlan && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing is already Featured. Lower or same-tier plans are disabled. You can choose a higher plan to upgrade your visibility.</p>}
+        {hasScheduledExtension && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing already has a scheduled Featured extension. Please review your active plan before purchasing another upgrade.</p>}
+        {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        {successMessage && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMessage}</p>}
+        {loadingPlans && <p className="text-muted">Loading featured plans...</p>}
+        {!loadingPlans && sortedPlans.length === 0 && !error && <p className="text-muted">No plans available right now.</p>}
+
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {sortedPlans.map((plan) => {
+            const hasCompareAt = Boolean(plan.compare_at_amount_paise && plan.compare_at_amount_paise > plan.amount_paise);
+            const disabledReason = getPlanDisabledReason(plan);
+            const isPlanDisabled = Boolean(disabledReason);
+
+            return (
+              <Card key={plan.id} className={`p-5 space-y-3 border border-slate-200 ${isPlanDisabled ? "opacity-70" : ""}`}>
+                <div className="flex flex-wrap gap-2">
+                  {plan.badge && <span className="badge-secondary">{plan.badge}</span>}
+                  {plan.is_popular && <span className="badge-success">Most Popular</span>}
+                  {plan.is_best_value && <span className="badge-warning">Best Value</span>}
+                  {isFeaturedActive && activePlan && !isPlanDisabled && <span className="badge-secondary">Upgrade Available</span>}
+                </div>
+                <h3 className="text-lg font-semibold">{plan.name}</h3>
+                <p className="text-sm text-muted">{plan.duration_days} days visibility</p>
+                <div>
+                  <p className="text-2xl font-bold text-primary">{formatCurrency(plan.amount_paise)}</p>
+                  {hasCompareAt && <p className="text-sm text-muted line-through">{formatCurrency(plan.compare_at_amount_paise as number)}</p>}
+                </div>
+                {plan.description && <p className="text-sm text-muted">{plan.description}</p>}
+                {Array.isArray(plan.benefits) && plan.benefits.length > 0 && (
+                  <ul className="text-sm list-disc pl-5 space-y-1">
+                    {plan.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}
+                  </ul>
+                )}
+                {isPlanDisabled && <p className="text-xs text-muted">You already have an active Featured plan. Choose a higher plan to upgrade/extend visibility.</p>}
+                <Button
+                  className="w-full"
+                  disabled={!canPromote || isPlanDisabled || Boolean(processingPlanKey) || isCheckoutOpen || isVerifying}
+                  onClick={() => handlePlanPurchase(plan)}
+                >
+                  {processingPlanKey === plan.plan_key || isCheckoutOpen || isVerifying
+                    ? "Processing..."
+                    : disabledReason === "current"
+                      ? "Current Active Plan"
+                      : disabledReason === "lower"
+                        ? "Lower Than Active Plan"
+                        : "Select & Pay"}
+                </Button>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }

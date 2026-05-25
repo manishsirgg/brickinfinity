@@ -98,7 +98,7 @@ export async function POST(req: Request) {
 
     const { data: plan, error: planError } = await supabase
       .from("property_featured_plans")
-      .select("id, plan_key, name, duration_days, amount_paise, compare_at_amount_paise, currency, badge, is_active")
+      .select("id, plan_key, name, duration_days, amount_paise, compare_at_amount_paise, currency, badge, is_active, sort_order")
       .eq("id", body.planId)
       .maybeSingle();
 
@@ -113,6 +113,40 @@ export async function POST(req: Request) {
 
     if (planError || !plan || !plan.is_active) {
       return errorResponse("Featured plan not found or inactive.", "PLAN_NOT_FOUND_OR_INACTIVE", 404);
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: activeOrder } = await supabaseAdmin
+      .from("property_featured_orders")
+      .select("id, plan_id, amount_paise, activation_status, payment_status")
+      .eq("property_id", property.id)
+      .eq("activation_status", "active")
+      .in("payment_status", ["paid", "captured"])
+      .gt("featured_ends_at", nowIso)
+      .order("featured_ends_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (activeOrder) {
+      const { data: activePlan } = await supabase
+        .from("property_featured_plans")
+        .select("id, amount_paise, sort_order")
+        .eq("id", activeOrder.plan_id)
+        .maybeSingle();
+
+      const requestedSortOrder = (plan as { sort_order?: number }).sort_order;
+      const activeSortOrder = (activePlan as { sort_order?: number } | null)?.sort_order;
+      const isSamePlan = plan.id === activePlan?.id || plan.id === activeOrder.plan_id;
+      const isLowerOrSameByTier = typeof requestedSortOrder === "number" && typeof activeSortOrder === "number" && requestedSortOrder <= activeSortOrder;
+      const isLowerOrSameByAmount = plan.amount_paise <= (activePlan?.amount_paise ?? activeOrder.amount_paise);
+
+      if (isSamePlan || isLowerOrSameByTier || isLowerOrSameByAmount) {
+        return errorResponse(
+          "You already have an active Featured plan. Please choose a higher plan to upgrade.",
+          "ACTIVE_PLAN_UPGRADE_REQUIRED",
+          400
+        );
+      }
     }
 
     const razorpayKeyId = process.env.RAZORPAY_KEY_ID;

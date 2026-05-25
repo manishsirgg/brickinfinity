@@ -46,6 +46,8 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
   const [featuredModalOpen,setFeaturedModalOpen] = useState(false);
   const [selectedPropertyId,setSelectedPropertyId] = useState<string | null>(null);
   const [selectedPropertyTitle,setSelectedPropertyTitle] = useState("");
+  const [selectedPropertyFeaturedPlanKey,setSelectedPropertyFeaturedPlanKey] = useState<string | null>(null);
+  const [selectedPropertyIsFeaturedActive,setSelectedPropertyIsFeaturedActive] = useState(false);
   const [search,setSearch] = useState("");
 
   const [stats,setStats] = useState({
@@ -204,8 +206,15 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
   }
 
   function openFeaturedModal(property: ListingProperty) {
+    const now = new Date();
+    const featuredUntilDate = property.featured_until ? new Date(property.featured_until) : null;
+    const hasValidFeaturedUntil = Boolean(featuredUntilDate && !Number.isNaN(featuredUntilDate.getTime()));
+    const isFeaturedActive = property.is_featured === true && hasValidFeaturedUntil && (featuredUntilDate as Date) > now;
+
     setSelectedPropertyId(property.id);
     setSelectedPropertyTitle(`${property.property_type} (${property.listing_type})`);
+    setSelectedPropertyFeaturedPlanKey(property.featured_plan_key);
+    setSelectedPropertyIsFeaturedActive(isFeaturedActive);
     setFeaturedModalOpen(true);
   }
 
@@ -496,6 +505,8 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
         isOpen={featuredModalOpen}
         propertyId={selectedPropertyId}
         propertyTitle={selectedPropertyTitle}
+        isFeaturedActive={selectedPropertyIsFeaturedActive}
+        activeFeaturedPlanKey={selectedPropertyFeaturedPlanKey}
         canPromote={Boolean(properties.find((item) => item.id === selectedPropertyId && isFeaturePromotableStatus(item.status) && !item.deleted_at))}
         onClose={() => setFeaturedModalOpen(false)}
         onVerified={(activation) => {
