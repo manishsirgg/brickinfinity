@@ -1,12 +1,36 @@
 "use client"
 
 import Link from "next/link"
+import { isPropertyFeaturedActive } from "@/lib/property-featured"
 
-type Props = {
-  property: any
+type PropertyCardProperty = {
+  id: string
+  slug?: string | null
+  property_type?: string | null
+  listing_type?: string | null
+  property_images?: { image_url?: string | null }[] | null
+  hourly_rate?: number | null
+  daily_rate?: number | null
+  monthly_rate?: number | null
+  price?: number | null
+  built_up_area?: number | null
+  created_at?: string | null
+  views_count?: number | null
+  amenities?: string[] | null
+  ownership_verified?: boolean | null
+  is_featured?: boolean | null
+  featured_until?: string | null
+  localities?: { name?: string | null } | null
+  cities?: { name?: string | null } | null
+  bedrooms?: number | null
+  bathrooms?: number | null
 }
 
-function getRentPriceDetails(property: any) {
+type Props = {
+  property: PropertyCardProperty
+}
+
+function getRentPriceDetails(property: PropertyCardProperty) {
   const hourly = Number(property?.hourly_rate || 0)
   const daily = Number(property?.daily_rate || 0)
   const monthly = Number(property?.monthly_rate || property?.price || 0)
@@ -17,24 +41,15 @@ function getRentPriceDetails(property: any) {
 }
 
 export default function PropertyCard({ property }: Props) {
+  const image = property?.property_images?.[0]?.image_url || "/placeholder.jpg"
 
-  const image =
-    property?.property_images?.[0]?.image_url ||
-    "/placeholder.jpg"
+  const isRent = property?.listing_type?.toLowerCase() === "rent"
 
-  const isRent =
-    property?.listing_type?.toLowerCase() === "rent"
+  const rentPrice = isRent ? getRentPriceDetails(property) : null
 
-  const rentPrice = isRent
-    ? getRentPriceDetails(property)
-    : null
+  const displayPrice = isRent ? rentPrice?.amount || 0 : property?.price || 0
 
-  const displayPrice = isRent
-    ? rentPrice?.amount || 0
-    : property?.price || 0
-
-  const formattedPrice =
-    new Intl.NumberFormat("en-IN").format(displayPrice)
+  const formattedPrice = new Intl.NumberFormat("en-IN").format(displayPrice)
 
   const pricePerSqft =
     property?.built_up_area
@@ -43,21 +58,20 @@ export default function PropertyCard({ property }: Props) {
 
   const isNew =
     property?.created_at &&
-    new Date(property.created_at) >
-      new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    new Date(property.created_at) > new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
 
-  const isPopular =
-    property?.views_count && property.views_count > 50
+  const isPopular = property?.views_count && property.views_count > 50
 
-  const topAmenities =
-    Array.isArray(property?.amenities)
-      ? property.amenities.slice(0, 3)
-      : []
+  const topAmenities = Array.isArray(property?.amenities)
+    ? property.amenities.slice(0, 3)
+    : []
 
   const propertyUrl =
     property?.slug
       ? `/property/${property.id}/${property.slug}`
       : `/property/${property.id}`
+
+  const isFeaturedActive = isPropertyFeaturedActive(property)
 
   return (
     <Link
@@ -80,9 +94,9 @@ export default function PropertyCard({ property }: Props) {
             {isRent ? "For Rent" : "For Sale"}
           </span>
 
-          {property?.is_featured && (
-            <span className="bg-primary text-white text-xs px-3 py-1 rounded-full">
-              Featured
+          {isFeaturedActive && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 shadow-sm">
+              ⭐ Featured
             </span>
           )}
 
@@ -134,17 +148,11 @@ export default function PropertyCard({ property }: Props) {
         </p>
 
         <div className="flex gap-4 text-sm text-muted flex-wrap">
-          {property?.bedrooms && (
-            <span>🛏 {property.bedrooms}</span>
-          )}
+          {property?.bedrooms && <span>🛏 {property.bedrooms}</span>}
 
-          {property?.bathrooms && (
-            <span>🚿 {property.bathrooms}</span>
-          )}
+          {property?.bathrooms && <span>🚿 {property.bathrooms}</span>}
 
-          {property?.built_up_area && (
-            <span>📐 {property.built_up_area} sqft</span>
-          )}
+          {property?.built_up_area && <span>📐 {property.built_up_area} sqft</span>}
         </div>
 
         {topAmenities.length > 0 && (

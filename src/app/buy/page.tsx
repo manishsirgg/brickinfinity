@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import Link from "next/link";
 import { Metadata } from "next";
 import PropertyCard from "@/components/property/PropertyCard";
+import { sortFeaturedPropertiesFirst } from "@/lib/property-featured";
 
 type Props = {
   searchParams?: {
@@ -146,6 +147,9 @@ export default async function BuyPage({
       rent_frequency,
       ownership_verified,
       is_featured,
+      featured_until,
+      featured_rank,
+      featured_plan_key,
       views_count,
       created_at,
       cities(name,state_id),
@@ -192,6 +196,8 @@ export default async function BuyPage({
 
   query = query
     .order("is_featured", { ascending: false })
+    .order("featured_rank", { ascending: false })
+    .order("featured_until", { ascending: false })
     .order("views_count", { ascending: false })
     .order("created_at", { ascending: false })
     .range(from, to);
@@ -219,6 +225,9 @@ export default async function BuyPage({
         amenities,
         ownership_verified,
         is_featured,
+        featured_until,
+        featured_rank,
+        featured_plan_key,
         views_count,
         created_at
         `,
@@ -247,6 +256,8 @@ export default async function BuyPage({
     const { data: fallbackProperties, count: fallbackCount, error: fallbackError } =
       await fallbackQuery
         .order("is_featured", { ascending: false })
+        .order("featured_rank", { ascending: false })
+        .order("featured_until", { ascending: false })
         .order("views_count", { ascending: false })
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -258,6 +269,10 @@ export default async function BuyPage({
       finalCount = fallbackCount ?? null;
     }
   }
+
+  const sortedProperties = finalProperties
+    ? sortFeaturedPropertiesFirst(finalProperties)
+    : finalProperties;
 
   const totalPages = finalCount
     ? Math.ceil(finalCount / pageSize)
@@ -296,7 +311,7 @@ export default async function BuyPage({
       )}
 
       <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
-        {finalProperties?.map((property: any) => (
+        {sortedProperties?.map((property: any) => (
           <PropertyCard
             key={property.id}
             property={property}

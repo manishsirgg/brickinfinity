@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import Link from "next/link";
 import { Metadata } from "next";
 import PropertyCard from "@/components/property/PropertyCard";
+import { sortFeaturedPropertiesFirst } from "@/lib/property-featured";
 
 type Props = {
   searchParams?: {
@@ -152,6 +153,9 @@ export default async function RentPage({
       preferred_tenant,
       ownership_verified,
       is_featured,
+      featured_until,
+      featured_rank,
+      featured_plan_key,
       views_count,
       created_at,
       cities(name,state_id),
@@ -210,6 +214,8 @@ export default async function RentPage({
 
   query = query
     .order("is_featured", { ascending: false })
+    .order("featured_rank", { ascending: false })
+    .order("featured_until", { ascending: false })
     .order("views_count", { ascending: false })
     .order("created_at", { ascending: false })
     .range(from, to);
@@ -220,6 +226,10 @@ export default async function RentPage({
   if (error) {
     console.error("Rent page error:", error);
   }
+
+  const sortedProperties = properties
+    ? sortFeaturedPropertiesFirst(properties)
+    : properties;
 
   const totalPages = count
     ? Math.ceil(count / pageSize)
@@ -258,7 +268,7 @@ export default async function RentPage({
       )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-        {properties?.map((property: any) => (
+        {sortedProperties?.map((property: any) => (
           <PropertyCard
             key={property.id}
             property={property}
