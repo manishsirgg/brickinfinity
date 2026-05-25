@@ -40,8 +40,40 @@ function getRentPriceDetails(property: PropertyCardProperty) {
   return { amount: monthly, label: "/ month" }
 }
 
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return (
+      trimmed !== "" &&
+      trimmed !== "0" &&
+      trimmed !== "00" &&
+      trimmed.toLowerCase() !== "null" &&
+      trimmed.toLowerCase() !== "undefined"
+    )
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0
+  }
+
+  return true
+}
+
 export default function PropertyCard({ property }: Props) {
   const image = property?.property_images?.[0]?.image_url || "/placeholder.jpg"
+
+  const propertyType = hasMeaningfulValue(property?.property_type) ? String(property.property_type).trim() : null
+  const locality = hasMeaningfulValue(property?.localities?.name) ? String(property.localities?.name).trim() : null
+  const city = hasMeaningfulValue(property?.cities?.name) ? String(property.cities?.name).trim() : null
+
+  const locationParts = [locality, city].filter((part): part is string => Boolean(part))
+
+  const bedrooms = hasMeaningfulValue(property?.bedrooms) ? Number(property?.bedrooms) : null
+  const bathrooms = hasMeaningfulValue(property?.bathrooms) ? Number(property?.bathrooms) : null
+  const builtUpArea = hasMeaningfulValue(property?.built_up_area) ? Number(property?.built_up_area) : null
 
   const isRent = property?.listing_type?.toLowerCase() === "rent"
 
@@ -51,10 +83,7 @@ export default function PropertyCard({ property }: Props) {
 
   const formattedPrice = new Intl.NumberFormat("en-IN").format(displayPrice)
 
-  const pricePerSqft =
-    property?.built_up_area
-      ? Math.round(displayPrice / property.built_up_area)
-      : null
+  const pricePerSqft = builtUpArea ? Math.round(displayPrice / builtUpArea) : null
 
   const isNew =
     property?.created_at &&
@@ -138,21 +167,24 @@ export default function PropertyCard({ property }: Props) {
           )}
         </div>
 
-        <p className="font-semibold text-[var(--color-dark)]">
-          {property?.property_type}
-        </p>
+        {propertyType && (
+          <p className="font-semibold text-[var(--color-dark)]">
+            {propertyType}
+          </p>
+        )}
 
-        <p className="text-sm text-muted">
-          {property?.localities?.name},{" "}
-          {property?.cities?.name}
-        </p>
+        {locationParts.length > 0 && (
+          <p className="text-sm text-muted">
+            {locationParts.join(", ")}
+          </p>
+        )}
 
         <div className="flex gap-4 text-sm text-muted flex-wrap">
-          {property?.bedrooms && <span>🛏 {property.bedrooms}</span>}
+          {bedrooms && <span>🛏 {bedrooms}</span>}
 
-          {property?.bathrooms && <span>🚿 {property.bathrooms}</span>}
+          {bathrooms && <span>🚿 {bathrooms}</span>}
 
-          {property?.built_up_area && <span>📐 {property.built_up_area} sqft</span>}
+          {builtUpArea && <span>📐 {builtUpArea} sqft</span>}
         </div>
 
         {topAmenities.length > 0 && (
