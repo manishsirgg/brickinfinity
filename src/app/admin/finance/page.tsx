@@ -1,10 +1,21 @@
 import Link from "next/link";
-import { fetchFeaturedOrders, isFailed, isPaid, isPending } from "@/lib/admin-finance";
+import { classifyFinanceStatus, fetchFeaturedOrders, isPaid } from "@/lib/admin-finance";
 
 const pageSize = 15;
 
 function formatInr(paise: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format((paise || 0) / 100);
+}
+
+function badgeClass(kind: "green" | "red" | "yellow" | "slate" | "blue") {
+  const map = {
+    green: "bg-green-100 text-green-800",
+    red: "bg-red-100 text-red-800",
+    yellow: "bg-yellow-100 text-yellow-800",
+    slate: "bg-slate-100 text-slate-700",
+    blue: "bg-blue-100 text-blue-800",
+  };
+  return `inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${map[kind]}`;
 }
 
 export default async function AdminFinancePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -20,25 +31,31 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
   const seven = new Date(now); seven.setDate(now.getDate() - 6);
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const filtered = orders.filter((o) => {
+  const withStatus = orders.map((o) => ({ ...o, financeStatus: classifyFinanceStatus(o) }));
+
+  const filtered = withStatus.filter((o) => {
     const hay = [o.users?.full_name, o.users?.email, o.users?.phone, o.properties?.title, o.razorpay_order_id, o.razorpay_payment_id].join(" ").toLowerCase();
     const date = new Date(o.paid_at || o.created_at);
     const dateOk = range === "all" || (range === "today" && date >= todayStart) || (range === "7d" && date >= seven) || (range === "month" && date >= monthStart);
-    const payStatus = String(o.payment_status ?? "").toLowerCase();
     const actStatus = String(o.activation_status ?? "").toLowerCase();
-    const payOk = pay === "all" || payStatus === pay || (pay === "failed" && isFailed(payStatus)) || (pay === "pending" && isPending(payStatus));
+    const payOk = pay === "all"
+      || (pay === "paid" && o.financeStatus === "revenue_success")
+      || (pay === "pending" && o.financeStatus === "pending_payment")
+      || (pay === "failed" && o.financeStatus === "real_failed_payment")
+      || (pay === "cancelled_stale" && ["stale_cancelled", "cancelled_by_user"].includes(o.financeStatus));
     const actOk = act === "all" || actStatus === act;
     return (!search || hay.includes(search)) && dateOk && payOk && actOk;
   });
 
-  const totalRevenue = orders.filter((o) => isPaid(o.payment_status)).reduce((sum, o) => sum + (o.amount_paise || 0), 0);
-  const revenueThisMonth = orders.filter((o) => isPaid(o.payment_status) && new Date(o.paid_at || o.created_at) >= monthStart).reduce((sum, o) => sum + (o.amount_paise || 0), 0);
-  const successfulPayments = orders.filter((o) => isPaid(o.payment_status)).length;
-  const failedPayments = orders.filter((o) => isFailed(o.payment_status)).length;
-  const pendingPayments = orders.filter((o) => isPending(o.payment_status)).length;
-  const activePurchases = orders.filter((o) => String(o.activation_status).toLowerCase() === "active").length;
-  const scheduledPurchases = orders.filter((o) => String(o.activation_status).toLowerCase() === "scheduled").length;
-  const manualReview = orders.filter((o) => isPaid(o.payment_status) && !["active", "scheduled"].includes(String(o.activation_status).toLowerCase())).length;
+  const totalRevenue = withStatus.filter((o) => isPaid(o.payment_status)).reduce((sum, o) => sum + (o.amount_paise || 0), 0);
+  const revenueThisMonth = withStatus.filter((o) => isPaid(o.payment_status) && new Date(o.paid_at || o.created_at) >= monthStart).reduce((sum, o) => sum + (o.amount_paise || 0), 0);
+  const successfulPayments = withStatus.filter((o) => o.financeStatus === "revenue_success").length;
+  const failedPayments = withStatus.filter((o) => o.financeStatus === "real_failed_payment").length;
+  const pendingPayments = withStatus.filter((o) => o.financeStatus === "pending_payment").length;
+  const cancelledOrStale = withStatus.filter((o) => ["stale_cancelled", "cancelled_by_user"].includes(o.financeStatus)).length;
+  const activePurchases = withStatus.filter((o) => String(o.activation_status).toLowerCase() === "active").length;
+  const scheduledPurchases = withStatus.filter((o) => String(o.activation_status).toLowerCase() === "scheduled").length;
+  const manualReview = withStatus.filter((o) => o.financeStatus === "manual_review").length;
 
   const start = (page - 1) * pageSize;
   const pageRows = filtered.slice(start, start + pageSize);
@@ -48,12 +65,14 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
     <h1 className="text-2xl font-semibold">Finance & Payments — Property Featured</h1>
     <div className="grid md:grid-cols-4 gap-3 text-sm">{[
       ["Total Revenue", formatInr(totalRevenue)], ["Revenue This Month", formatInr(revenueThisMonth)], ["Successful Payments", successfulPayments], ["Failed Payments", failedPayments],
-      ["Pending Payments", pendingPayments], ["Active Featured Purchases", activePurchases], ["Scheduled Featured Purchases", scheduledPurchases], ["Manual Review", manualReview],
+      ["Pending Payments", pendingPayments], ["Cancelled / Stale Orders", cancelledOrStale], ["Active Featured Purchases", activePurchases], ["Scheduled Featured Purchases", scheduledPurchases], ["Manual Review", manualReview],
     ].map(([k,v]) => <div key={String(k)} className="bg-white border rounded-xl p-4"><div className="text-gray-500">{k}</div><div className="font-semibold text-lg">{String(v)}</div></div>)}</div>
+
+    <p className="text-xs text-gray-600 bg-blue-50 border border-blue-100 rounded-xl p-3">Revenue is calculated only from successfully paid local Featured orders. Pending, failed, cancelled, and stale unpaid Razorpay orders are excluded.</p>
 
     <form className="bg-white border rounded-xl p-4 grid md:grid-cols-5 gap-2 text-sm">
       <input name="q" defaultValue={search} placeholder="Search seller/property/Razorpay ref" className="border rounded px-3 py-2 md:col-span-2" />
-      <select name="payment" defaultValue={pay} className="border rounded px-2 py-2"><option value="all">All payment</option><option value="paid">Paid</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select>
+      <select name="payment" defaultValue={pay} className="border rounded px-2 py-2"><option value="all">All payment</option><option value="paid">Paid</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="cancelled_stale">Cancelled/Stale</option></select>
       <select name="activation" defaultValue={act} className="border rounded px-2 py-2"><option value="all">All activation</option><option value="active">Active</option><option value="scheduled">Scheduled</option><option value="pending">Pending</option><option value="failed">Failed</option></select>
       <select name="range" defaultValue={range} className="border rounded px-2 py-2"><option value="all">All dates</option><option value="today">Today</option><option value="7d">Last 7 days</option><option value="month">This month</option></select>
       <button className="border rounded px-4 py-2">Apply</button>
@@ -63,10 +82,24 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
       <table className="min-w-full text-xs"><thead><tr className="border-b bg-gray-50"><th className="p-2 text-left">Date</th><th className="p-2 text-left">Seller</th><th className="p-2 text-left">Property</th><th className="p-2 text-left">Plan</th><th className="p-2 text-left">Amount</th><th className="p-2 text-left">Statuses</th><th className="p-2 text-left">Razorpay refs</th><th className="p-2 text-left">Action</th></tr></thead>
       <tbody>
         {pageRows.length === 0 && <tr><td className="p-4" colSpan={8}>No Featured Listing payments found yet.</td></tr>}
-        {pageRows.map((o) => <tr key={o.id} className="border-b align-top"><td className="p-2">{new Date(o.created_at).toLocaleString()}<div className="text-gray-500">Paid: {o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</div></td><td className="p-2">{o.users?.full_name || "-"}<div>{o.users?.email || "-"}</div><div>{o.users?.phone || "-"}</div></td><td className="p-2">{o.properties?.title || "-"}<div className="text-gray-500">{o.property_id || "-"}</div></td><td className="p-2">{o.plan_name || "-"}</td><td className="p-2">{formatInr(o.amount_paise)}<div>{o.currency || "INR"}</div></td><td className="p-2"><div>{o.payment_status || "-"}</div><div>{o.activation_status || "-"}</div><div className="text-red-600">{o.failure_reason || ""}</div></td><td className="p-2"><div>{o.razorpay_order_id || "-"}</div><div>{o.razorpay_payment_id || "-"}</div></td><td className="p-2"><Link className="underline" href={`/admin/finance/property-featured/${o.id}`}>View details</Link></td></tr>)}
+        {pageRows.map((o) => {
+          const paymentBadge = o.financeStatus === "revenue_success" || o.financeStatus === "manual_review" ? ["Paid", "green"] as const
+            : o.financeStatus === "pending_payment" ? ["Pending", "yellow"] as const
+            : o.financeStatus === "real_failed_payment" ? ["Failed", "red"] as const
+            : ["Cancelled", "slate"] as const;
+
+          const activationBadge = o.financeStatus === "revenue_success" ? [String(o.activation_status).toLowerCase() === "scheduled" ? "Scheduled" : "Active", "blue"] as const
+            : o.financeStatus === "pending_payment" ? ["Pending", "yellow"] as const
+            : o.financeStatus === "real_failed_payment" ? ["Not Activated", "red"] as const
+            : o.financeStatus === "stale_cancelled" ? ["Stale / Superseded", "slate"] as const
+            : o.financeStatus === "cancelled_by_user" ? ["Cancelled by User", "slate"] as const
+            : ["Needs Review", "red"] as const;
+
+          return <tr key={o.id} className="border-b align-top"><td className="p-2">{new Date(o.created_at).toLocaleString()}<div className="text-gray-500">Paid: {o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</div></td><td className="p-2">{o.users?.full_name || "-"}<div>{o.users?.email || "-"}</div><div>{o.users?.phone || "-"}</div></td><td className="p-2">{o.properties?.title || "-"}<div className="text-gray-500">{o.property_id || "-"}</div></td><td className="p-2">{o.plan_name || "-"}</td><td className="p-2">{formatInr(o.amount_paise)}<div>{o.currency || "INR"}</div></td><td className="p-2 space-y-1"><div className={badgeClass(paymentBadge[1])}>{paymentBadge[0]}</div><div><span className={badgeClass(activationBadge[1])}>{activationBadge[0]}</span></div>{o.financeStatus === "stale_cancelled" && <div className="text-slate-600">Unpaid Razorpay order cancelled because a successful paid order already exists.</div>}{o.financeStatus === "real_failed_payment" && <div className="text-red-600">{o.failure_reason || "Payment failed or verification failed."}</div>}</td><td className="p-2"><div>{o.razorpay_order_id || "-"}</div><div>{o.razorpay_payment_id || "-"}</div></td><td className="p-2"><Link className="underline" href={`/admin/finance/property-featured/${o.id}`}>View details</Link></td></tr>;
+        })}
       </tbody></table>
     </div>
     <div className="flex gap-2 text-sm">{Array.from({ length: pages }).map((_, i) => <Link key={i} className={`px-3 py-1 border rounded ${page===i+1?"bg-black text-white":""}`} href={`/admin/finance?page=${i+1}&q=${encodeURIComponent(search)}&payment=${pay}&activation=${act}&range=${range}`}>{i+1}</Link>)}</div>
-    <div className="bg-white border rounded-xl p-4 text-sm"><h2 className="font-semibold mb-2">Diagnostics</h2><ul className="list-disc pl-5"><li>Paid orders with missing activation_status: {orders.filter((o)=>isPaid(o.payment_status) && !o.activation_status).length}</li><li>Paid orders not active/scheduled: {manualReview}</li><li>Orders with Razorpay payment id but unpaid local status: {orders.filter((o)=>o.razorpay_payment_id && !isPaid(o.payment_status)).length}</li><li>Active/scheduled orders with missing property featured flag: {orders.filter((o)=>["active","scheduled"].includes(String(o.activation_status).toLowerCase()) && o.properties?.is_featured === false).length}</li></ul></div>
-  </div>
+    <div className="bg-white border rounded-xl p-4 text-sm"><h2 className="font-semibold mb-2">Diagnostics</h2><ul className="list-disc pl-5"><li>Paid orders with missing activation_status: {withStatus.filter((o)=>isPaid(o.payment_status) && !o.activation_status).length}</li><li>Paid orders not active/scheduled: {manualReview}</li><li>Orders with Razorpay payment id but unpaid local status: {withStatus.filter((o)=>o.razorpay_payment_id && !isPaid(o.payment_status)).length}</li><li>Active/scheduled orders with missing property featured flag: {withStatus.filter((o)=>["active","scheduled"].includes(String(o.activation_status).toLowerCase()) && o.properties?.is_featured === false).length}</li></ul></div>
+  </div>;
 }
