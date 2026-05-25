@@ -123,19 +123,24 @@ export async function POST(req: Request) {
       return errorResponse("Razorpay is not configured on the server.", "RAZORPAY_NOT_CONFIGURED", 500);
     }
 
+    const receipt = `pf_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
+    if (receipt.length > 40) {
+      throw new Error("Generated Razorpay receipt exceeds 40 characters");
+    }
+
     let razorpayOrder;
     try {
       razorpayOrder = await getRazorpayClient().orders.create({
-      amount: plan.amount_paise,
-      currency: "INR",
-      receipt: `featured_${property.id}_${Date.now()}`,
-      notes: {
-        purpose: "property_featured_listing",
-        property_id: property.id,
-        owner_id: appUser.id,
-        plan_key: plan.plan_key,
-      },
-    });
+        amount: plan.amount_paise,
+        currency: "INR",
+        receipt,
+        notes: {
+          purpose: "property_featured_listing",
+          property_id: property.id,
+          owner_id: appUser.id,
+          plan_key: plan.plan_key,
+        },
+      });
       console.info("[property-featured/create-order] razorpay order created", {
         razorpayOrderId: razorpayOrder.id,
         amount: razorpayOrder.amount,
@@ -143,8 +148,33 @@ export async function POST(req: Request) {
         status: razorpayOrder.status,
       });
     } catch (razorpayError) {
-      console.error("[property-featured/create-order] razorpay order creation failed", razorpayError);
-      return errorResponse("Unable to create payment order.", "RAZORPAY_ORDER_CREATE_FAILED", 502);
+      const typedError = razorpayError as {
+        statusCode?: number;
+        error?: {
+          code?: string;
+          description?: string;
+          reason?: string;
+          step?: string;
+        };
+      };
+
+      console.error("[property-featured/create-order] razorpay order creation failed", {
+        statusCode: typedError?.statusCode ?? null,
+        razorpayCode: typedError?.error?.code ?? null,
+        description: typedError?.error?.description ?? null,
+        reason: typedError?.error?.reason ?? null,
+        step: typedError?.error?.step ?? null,
+        receiptLength: receipt.length,
+        receipt,
+      });
+
+      return errorResponse("Unable to create payment order.", "RAZORPAY_ORDER_CREATE_FAILED", 502, {
+        statusCode: typedError?.statusCode ?? null,
+        razorpayCode: typedError?.error?.code ?? null,
+        description: typedError?.error?.description ?? null,
+        reason: typedError?.error?.reason ?? null,
+        step: typedError?.error?.step ?? null,
+      });
     }
 
     const { data: insertedOrder, error: orderInsertError } = await supabase
