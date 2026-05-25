@@ -141,6 +141,7 @@ export async function POST(req: Request) {
           purpose: "property_featured_listing",
           property_id: property.id,
           owner_id: appUser.id,
+          plan_id: plan.id,
           plan_key: plan.plan_key,
         },
       });
@@ -200,6 +201,12 @@ export async function POST(req: Request) {
         metadata: {
           razorpay_order: razorpayOrder,
           created_from: "seller_dashboard",
+          diagnostics_notes: {
+            property_id: property.id,
+            plan_id: plan.id,
+            plan_key: plan.plan_key,
+            owner_id: appUser.id,
+          },
         },
       })
       .select("id")

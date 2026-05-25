@@ -8,6 +8,7 @@ type ReconcileBody = {
   razorpay_payment_id?: string;
   local_order_id?: string;
   featured_order_id?: string;
+  source?: "queue" | "recent" | "manual" | "razorpay_scanner" | string;
 };
 
 type LocalFeaturedOrder = {
@@ -114,6 +115,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as ReconcileBody;
 
     const queueModeOrderId = body.local_order_id ?? body.featured_order_id;
+    const reconcileSource = body.source ?? (queueModeOrderId ? "queue" : "manual");
     if (!queueModeOrderId && !body?.razorpay_order_id) {
       return errorResponse(
         "Provide razorpay_order_id for manual mode, or local_order_id/featured_order_id for queue mode.",
@@ -228,6 +230,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     console.info("[admin/property-featured/reconcile] success", {
+      reconciliationSource: reconcileSource,
       adminProfileId: adminAuth.adminProfile.id,
       localOrderId: order.id,
       razorpay_order_id: razorpayOrderId,
