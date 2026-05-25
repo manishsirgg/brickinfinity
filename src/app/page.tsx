@@ -3,6 +3,7 @@ import Link from "next/link";
 import Button from "@/components/ui/Button";
 import HeroSearch from "@/components/HeroSearch";
 import PropertyCard from "@/components/property/PropertyCard";
+import { isPropertyFeaturedActive } from "@/lib/property-featured";
 
 export default async function HomePage() {
 
@@ -22,6 +23,9 @@ export default async function HomePage() {
       created_at,
       views_count,
       is_featured,
+      featured_until,
+      featured_rank,
+      featured_plan_key,
       ownership_verified,
       cities(name),
       localities(name),
@@ -57,6 +61,9 @@ export default async function HomePage() {
         created_at,
         views_count,
         is_featured,
+        featured_until,
+        featured_rank,
+        featured_plan_key,
         ownership_verified
       `)
       .eq("status", "active")
@@ -75,7 +82,23 @@ export default async function HomePage() {
 
   /* ================= FEATURED ================= */
 
-  const featured = await fetchHomeProperties("views_count");
+  const featuredData = await fetchHomeProperties("views_count");
+  const featured = featuredData
+    ? featuredData
+        .filter((property: any) => isPropertyFeaturedActive(property))
+        .sort((a: any, b: any) => {
+          const rankDiff = Number(b.featured_rank || 0) - Number(a.featured_rank || 0);
+          if (rankDiff !== 0) return rankDiff;
+
+          const untilDiff =
+            new Date(b.featured_until || 0).getTime() -
+            new Date(a.featured_until || 0).getTime();
+          if (untilDiff !== 0) return untilDiff;
+
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        })
+        .slice(0, 4)
+    : null;
 
   /* ================= LATEST ================= */
 
@@ -130,20 +153,22 @@ export default async function HomePage() {
 
       {/* FEATURED */}
 
-      <section className="bg-white py-20 border-t">
-        <div className="max-w-7xl mx-auto px-6">
+      {featured?.length ? (
+        <section className="bg-white py-20 border-t">
+          <div className="max-w-7xl mx-auto px-6">
 
-          <SectionHeader
-            title="Featured Properties"
-            subtitle="Top-performing verified listings."
-            href="/buy"
-            linkText="View All →"
-          />
+            <SectionHeader
+              title="Featured Properties"
+              subtitle="Promoted listings getting higher visibility on Brick Infinity."
+              href="/buy"
+              linkText="View All →"
+            />
 
-          <PropertyGrid properties={featured} />
+            <PropertyGrid properties={featured} />
 
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : null}
 
       {/* LATEST */}
 
