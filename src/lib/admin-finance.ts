@@ -69,7 +69,16 @@ export function classifyFinanceStatus(order: FeaturedOrder): FinanceStatus {
   const failureText = getFailureText(order);
 
   const hasStaleWording = ["stale unpaid razorpay order cancelled", "stale", "superseded", "already exists"].some((text) => failureText.includes(text));
-  const hasUserCancelledWording = ["user cancelled", "cancelled by user", "dismissed", "checkout closed", "payment cancelled by user"].some((text) => failureText.includes(text));
+  const hasUserCancelledWording = [
+    "user cancelled",
+    "cancelled by user",
+    "dismissed",
+    "checkout closed",
+    "payment cancelled by user",
+    "checkout_dismissed",
+    "user cancelled razorpay checkout",
+    "cancelled before payment",
+  ].some((text) => failureText.includes(text));
 
   if (isPaid(paymentStatus)) {
     if (!["active", "scheduled"].includes(activationStatus)) return "manual_review";
