@@ -1,12 +1,15 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 type VerifyBody = {
   featuredOrderId?: string;
   razorpay_order_id?: string;
   razorpay_payment_id?: string;
   razorpay_signature?: string;
+  propertyId?: string;
+  planId?: string;
 };
 
 function safeSignatureMatch(expected: string, provided: string): boolean {
@@ -23,6 +26,7 @@ function safeSignatureMatch(expected: string, provided: string): boolean {
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
+    const supabaseAdmin = createServiceClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -35,6 +39,12 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as VerifyBody;
+    console.info("[property-featured/verify] payload summary", {
+      keys: Object.keys(body ?? {}),
+      razorpay_order_id: body?.razorpay_order_id ?? null,
+      razorpay_payment_id: body?.razorpay_payment_id ?? null,
+      has_signature: Boolean(body?.razorpay_signature),
+    });
 
     if (
       !body.featuredOrderId ||
@@ -61,15 +71,33 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: order, error: orderError } = await supabase
+    const lookupColumn = "razorpay_order_id";
+    const { data: order, error: orderError } = await supabaseAdmin
       .from("property_featured_orders")
       .select("id, property_id, owner_id, razorpay_order_id, payment_status, activation_status")
-      .eq("id", body.featuredOrderId)
+      .eq(lookupColumn, body.razorpay_order_id)
       .maybeSingle();
+
+    console.info("[property-featured/verify] local order lookup result", {
+      lookupColumn,
+      found: Boolean(order),
+      lookupError: orderError?.message ?? null,
+      orderId: order?.id ?? null,
+      paymentStatus: order?.payment_status ?? null,
+      activationStatus: order?.activation_status ?? null,
+    });
 
     if (orderError || !order) {
       return NextResponse.json(
-        { ok: false, error: "Featured order not found." },
+        {
+          ok: false,
+          error: "Featured order not found.",
+          code: "FEATURED_ORDER_NOT_FOUND",
+          details: {
+            razorpay_order_id: body.razorpay_order_id,
+            lookupColumn,
+          },
+        },
         { status: 404 }
       );
     }
@@ -81,6 +109,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (body.featuredOrderId && order.id !== body.featuredOrderId) {
+      return NextResponse.json(
+        { ok: false, error: "Featured order mismatch." },
+        { status: 400 }
+      );
+    }
+
     if (order.razorpay_order_id !== body.razorpay_order_id) {
       return NextResponse.json(
         { ok: false, error: "Razorpay order mismatch." },
@@ -89,7 +124,7 @@ export async function POST(req: Request) {
     }
 
     if (order.payment_status === "paid" && order.activation_status === "active") {
-      const { data: propertyAfterActivation } = await supabase
+      const { data: propertyAfterActivation } = await supabaseAdmin
         .from("properties")
         .select("id, featured_started_at, featured_until")
         .eq("id", order.property_id)
@@ -118,7 +153,7 @@ export async function POST(req: Request) {
       .digest("hex");
 
     if (!safeSignatureMatch(expectedSignature, body.razorpay_signature)) {
-      await supabase
+      await supabaseAdmin
         .from("property_featured_orders")
         .update({
           payment_status: "failed",
@@ -134,8 +169,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const { error: activationError } = await supabase.rpc("activate_property_featured_order", {
-      p_order_id: body.featuredOrderId,
+    const { error: activationError } = await supabaseAdmin.rpc("activate_property_featured_order", {
+      p_order_id: order.id,
       p_razorpay_payment_id: body.razorpay_payment_id,
       p_razorpay_signature: body.razorpay_signature,
     });
@@ -151,11 +186,24 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: propertyAfterActivation } = await supabase
+    console.info("[property-featured/verify] activation rpc success", {
+      orderId: order.id,
+      paymentStatusBefore: order.payment_status,
+      activationStatusBefore: order.activation_status,
+    });
+
+    const { data: propertyAfterActivation } = await supabaseAdmin
       .from("properties")
       .select("id, featured_started_at, featured_until")
       .eq("id", order.property_id)
       .maybeSingle();
+
+    console.info("[property-featured/verify] activation result", {
+      orderId: order.id,
+      propertyId: order.property_id,
+      featuredStartsAt: propertyAfterActivation?.featured_started_at ?? null,
+      featuredEndsAt: propertyAfterActivation?.featured_until ?? null,
+    });
 
     return NextResponse.json({
       ok: true,

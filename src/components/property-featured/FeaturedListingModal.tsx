@@ -192,6 +192,8 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
                 razorpay_order_id: paymentResponse.razorpay_order_id,
                 razorpay_payment_id: paymentResponse.razorpay_payment_id,
                 razorpay_signature: paymentResponse.razorpay_signature,
+                propertyId,
+                planId: plan.id,
               }),
             });
             const verifyJson = (await verifyResponse.json()) as VerifyResponse | ApiErrorResponse;
