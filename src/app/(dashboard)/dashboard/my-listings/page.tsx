@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import FeaturedListingModal from "@/components/property-featured/FeaturedListingModal";
 import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -15,12 +16,35 @@ export default function MyListingsPage() {
   const router = useRouter();
 
   const [loading,setLoading] = useState(true);
-  const [properties,setProperties] = useState<any[]>([]);
+  type ListingProperty = {
+  id: string;
+  slug: string;
+  property_type: string;
+  listing_type: string;
+  price: number;
+  status: string;
+  rejection_reason: string | null;
+  is_featured: boolean | null;
+  featured_started_at: string | null;
+  featured_until: string | null;
+  featured_plan_key: string | null;
+  featured_rank: number | null;
+  featured_last_order_id: string | null;
+  deleted_at: string | null;
+  views_count: number | null;
+  created_at: string;
+  property_images: { image_url: string }[] | null;
+};
+
+const [properties,setProperties] = useState<ListingProperty[]>([]);
   const [page,setPage] = useState(0);
   const [totalCount,setTotalCount] = useState(0);
   const [deletingId,setDeletingId] = useState<string | null>(null);
 
   const [statusFilter,setStatusFilter] = useState("all");
+  const [featuredModalOpen,setFeaturedModalOpen] = useState(false);
+  const [selectedPropertyId,setSelectedPropertyId] = useState<string | null>(null);
+  const [selectedPropertyTitle,setSelectedPropertyTitle] = useState("");
   const [search,setSearch] = useState("");
 
   const [stats,setStats] = useState({
@@ -73,6 +97,12 @@ export default function MyListingsPage() {
             status,
             rejection_reason,
             is_featured,
+            featured_started_at,
+            featured_until,
+            featured_plan_key,
+            featured_rank,
+            featured_last_order_id,
+            deleted_at,
             views_count,
             created_at,
             property_images(image_url)
@@ -160,6 +190,24 @@ export default function MyListingsPage() {
 
   const totalPages =
     Math.ceil(totalCount / PAGE_SIZE);
+
+  function formatDate(value: string | null): string {
+    if (!value) return "";
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return "";
+    return new Intl.DateTimeFormat("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(parsedDate);
+  }
+
+  function openFeaturedModal(property: ListingProperty) {
+    setSelectedPropertyId(property.id);
+    setSelectedPropertyTitle(`${property.property_type} (${property.listing_type})`);
+    setFeaturedModalOpen(true);
+  }
+
 
   function getBadge(status:string){
 
@@ -340,6 +388,38 @@ export default function MyListingsPage() {
                   </p>
                 )}
 
+                {(() => {
+                  const now = new Date();
+                  const featuredUntilDate = property.featured_until ? new Date(property.featured_until) : null;
+                  const hasValidFeaturedUntil = Boolean(featuredUntilDate && !Number.isNaN(featuredUntilDate.getTime()));
+                  const isFeaturedActive = property.is_featured === true && hasValidFeaturedUntil && (featuredUntilDate as Date) > now;
+                  const isFeaturedExpired = property.is_featured === true && hasValidFeaturedUntil && (featuredUntilDate as Date) <= now;
+                  const canPromote = property.status === "approved" && !property.deleted_at;
+                  const promoteLabel = isFeaturedActive ? "Extend Featured" : isFeaturedExpired ? "Feature Again" : "Promote as Featured";
+
+                  return (
+                    <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                      {isFeaturedActive && <p className="text-xs font-medium text-emerald-700">⭐ Featured Active</p>}
+                      {isFeaturedActive && property.featured_until && (
+                        <p className="text-xs text-muted">Featured until {formatDate(property.featured_until)}</p>
+                      )}
+                      {isFeaturedExpired && <p className="text-xs font-medium text-amber-700">Featured Expired</p>}
+
+                      <Button
+                        variant="secondary"
+                        disabled={!canPromote}
+                        onClick={() => openFeaturedModal(property)}
+                      >
+                        {promoteLabel}
+                      </Button>
+
+                      {property.status !== "approved" && (
+                        <p className="text-xs text-muted">Only approved properties can be promoted.</p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div
                   className="flex gap-3 flex-wrap mt-4"
                   onClick={(e)=>e.stopPropagation()}
@@ -410,6 +490,24 @@ export default function MyListingsPage() {
         </div>
 
       )}
+
+      <FeaturedListingModal
+        isOpen={featuredModalOpen}
+        propertyId={selectedPropertyId}
+        propertyTitle={selectedPropertyTitle}
+        canPromote={Boolean(properties.find((item) => item.id === selectedPropertyId && item.status === "approved" && !item.deleted_at))}
+        onClose={() => setFeaturedModalOpen(false)}
+        onVerified={(activation) => {
+          setProperties((prev) => prev.map((item) => item.id === activation.propertyId ? {
+            ...item,
+            is_featured: true,
+            featured_until: activation.featuredEndsAt,
+            featured_started_at: activation.featuredStartsAt,
+            featured_last_order_id: activation.featuredOrderId,
+          } : item));
+          fetchListings();
+        }}
+      />
 
     </main>
 
