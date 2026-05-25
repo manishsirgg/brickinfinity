@@ -20,10 +20,29 @@ export default function FeaturedReconciliationPage() {
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [propertyPreview, setPropertyPreview] = useState<PropertyPreview>(null);
   const [showAlreadyReconciled, setShowAlreadyReconciled] = useState(true);
+  const [localOrdersApiError, setLocalOrdersApiError] = useState<{ error: string; code?: string } | null>(null);
 
   const fetchScanner = async () => { setLoadingScanner(true); const res = await fetch("/api/admin/property-featured/reconcile/razorpay-payments?count=30&onlyCaptured=true"); const json = await res.json(); setScannerRows(json.data ?? []); setLoadingScanner(false); };
   const fetchPlans = async () => { const res = await fetch('/api/property-featured/plans'); const json = await res.json(); setPlans(json.plans ?? []); };
-  const fetchLocalOrders = async () => { setLoadingLocalOrders(true); const res = await fetch('/api/admin/property-featured/reconcile/queue'); const json = await res.json(); setRecentLocalOrders(json.recentOrders ?? []); setLoadingLocalOrders(false); };
+  const fetchLocalOrders = async () => {
+    setLoadingLocalOrders(true);
+    setLocalOrdersApiError(null);
+    try {
+      const res = await fetch('/api/admin/property-featured/reconcile/queue');
+      const json = await res.json();
+      if (!res.ok || json?.error) {
+        setRecentLocalOrders([]);
+        setLocalOrdersApiError({ error: json?.error || 'Failed to fetch local orders.', code: json?.code });
+      } else {
+        setRecentLocalOrders(json.recentOrders ?? []);
+      }
+    } catch {
+      setRecentLocalOrders([]);
+      setLocalOrdersApiError({ error: 'Failed to fetch local orders.', code: 'QUEUE_FETCH_FAILED' });
+    } finally {
+      setLoadingLocalOrders(false);
+    }
+  };
 
   useEffect(() => { fetchScanner(); fetchPlans(); fetchLocalOrders(); }, []);
 
@@ -76,6 +95,9 @@ export default function FeaturedReconciliationPage() {
 
     <section className="border rounded-xl p-4 bg-white space-y-3">
       <div className="flex items-center justify-between"><h2 className="font-semibold">Recent Local Orders</h2><div className="flex gap-2"><button onClick={fetchLocalOrders} className="px-2 py-1 rounded border text-sm">{loadingLocalOrders ? "Refreshing..." : "Refresh Local"}</button><button onClick={bulkCancelStaleOrders} className="px-2 py-1 rounded bg-red-700 text-white text-sm">Cancel stale {'>'}60 min</button></div></div>
+      {localOrdersApiError && <div className="rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">
+        Local orders API error: {localOrdersApiError.error} {localOrdersApiError.code ? `(${localOrdersApiError.code})` : ''}
+      </div>}
       <div className="overflow-auto"><table className="w-full text-xs"><thead><tr className="border-b"><th className="p-2 text-left">Local Order</th><th className="p-2 text-left">Property</th><th className="p-2 text-left">Amount</th><th className="p-2 text-left">Statuses</th><th className="p-2 text-left">Created</th><th className="p-2 text-left">Action</th></tr></thead><tbody>{recentLocalOrders.map((o)=><tr key={o.local_order_id} className="border-b align-top"><td className="p-2">{o.local_order_id}</td><td className="p-2">{o.property_title || '-'}</td><td className="p-2">{(Number(o.amount_paise || 0)/100).toFixed(2)} {o.currency || 'INR'}</td><td className="p-2"><div>Payment: <span className={String(o.payment_status).toLowerCase() === 'cancelled' ? 'text-red-700 font-semibold' : ''}>{o.payment_status || '-'}</span></div><div>Activation: <span className={String(o.activation_status).toLowerCase() === 'cancelled' ? 'text-red-700 font-semibold' : ''}>{o.activation_status || '-'}</span></div></td><td className="p-2">{new Date(o.created_at).toLocaleString()}</td><td className="p-2">{isStaleCancellable(o) ? <button onClick={() => cancelStaleOrder(o.local_order_id)} className="px-2 py-1 rounded bg-red-600 text-white">Cancel stale order</button> : '-'}</td></tr>)}</tbody></table></div>
     </section>
 
