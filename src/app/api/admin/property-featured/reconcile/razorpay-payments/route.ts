@@ -25,8 +25,8 @@ export async function GET(req: Request) {
             paymentIds.length ? `razorpay_payment_id.in.(${paymentIds.map((id) => `\"${id}\"`).join(",")})` : null,
           ].filter(Boolean).join(","))
       : { data: [] as any[] };
-    const orderMap = new Map((localOrders ?? []).map((o) => [o.razorpay_order_id, o]));
-    const paymentMap = new Map((localOrders ?? []).map((o) => [o.razorpay_payment_id, o]));
+    const orderMap = new Map((localOrders ?? []).filter((o) => Boolean(o.razorpay_order_id)).map((o) => [o.razorpay_order_id, o]));
+    const paymentMap = new Map((localOrders ?? []).filter((o) => Boolean(o.razorpay_payment_id)).map((o) => [o.razorpay_payment_id, o]));
 
     const noLocalRows = rows.filter((p) => !(p.order_id && orderMap.get(p.order_id)) && !paymentMap.get(p.id));
     const detectedOrders = await Promise.all(noLocalRows.map(async (payment) => {
@@ -52,9 +52,12 @@ export async function GET(req: Request) {
         : paymentMap.get(p.id) ?? null;
       const localPaymentStatus = String(local?.payment_status ?? "").toLowerCase();
       const localActivationStatus = String(local?.activation_status ?? "").toLowerCase();
+      const localStatus = String(local?.status ?? "").toLowerCase();
       const alreadyReconciled = Boolean(local && (["paid", "success", "captured"].includes(localPaymentStatus) || ["active", "scheduled"].includes(localActivationStatus)));
-      const canReconcile = Boolean(local && !alreadyReconciled && p.status === "captured");
+      const isCancelledOrFailed = ["cancelled", "failed"].includes(localPaymentStatus) || ["cancelled", "failed"].includes(localActivationStatus) || ["cancelled", "failed"].includes(localStatus);
+      const canReconcile = Boolean(local && !alreadyReconciled && !isCancelledOrFailed && p.status === "captured");
       const canRecover = !local;
+      const duplicateWouldBeBlocked = Boolean(local);
       const detectedOrder = !local ? detectedOrderMap.get(p.id) : null;
       const notes = detectedOrder?.notes as Record<string, unknown> | undefined;
       const detectedPurpose = typeof notes?.purpose === "string" ? notes.purpose : null;
@@ -94,16 +97,18 @@ export async function GET(req: Request) {
         currencyMatchesDetectedPlan
       );
 
-      const label = alreadyReconciled
-        ? "Already Reconciled"
-        : canReconcile
-          ? "Ready to Reconcile"
-          : canRecoverFromDetectedNotes
-            ? "Detected Property/Plan"
-            : "Needs Manual Review";
+      const label = local
+        ? alreadyReconciled
+          ? "Already Reconciled"
+          : canReconcile
+            ? "Ready to Reconcile"
+            : "Local Order Exists — Review"
+        : canRecoverFromDetectedNotes
+          ? "Detected Property/Plan"
+          : "Needs Manual Review";
       console.info("[admin/property-featured/reconcile/razorpay-payments] detected notes", { payment_id: p.id, razorpay_order_id: p.order_id ?? null, detectedPurpose, detectedPropertyId, detectedPlanKey, detectedOwnerId, amountMatchesDetectedPlan, canRecoverFromDetectedNotes });
-      console.info("[admin/property-featured/reconcile/razorpay-payments] payment match", { payment_id: p.id, payment_order_id: p.order_id ?? null, matchedBy, localOrderId: local?.id ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, alreadyReconciled, canReconcile, canRecover });
-      return { payment_id: p.id, order_id: p.order_id ?? null, amount: Number(p.amount), currency: p.currency, status: p.status, method: p.method ?? null, contact: p.contact ?? null, email: p.email ?? null, created_at: new Date((p.created_at ?? 0) * 1000).toISOString(), localOrderFound: Boolean(local), localOrderId: local?.id ?? null, propertyId: local?.property_id ?? null, propertyTitle: (local?.properties as { title?: string } | null)?.title ?? null, plan: local?.plan_name ?? local?.plan_key ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, localStatus: local?.status ?? null, alreadyReconciled, canReconcile, canRecover, label, matchedBy, detectedFromRazorpayNotes, detectedPropertyId, detectedOwnerId, detectedPlanId, detectedPlanKey, detectedPurpose, detectedPropertyTitle, detectedPropertyStatus, detectedPlanName, detectedPlanAmountPaise, detectedPlanCurrency, amountMatchesDetectedPlan, currencyMatchesDetectedPlan, canRecoverFromDetectedNotes };
+      console.info("[admin/property-featured/reconcile/razorpay-payments] payment match", { payment_id: p.id, payment_order_id: p.order_id ?? null, localOrderFound: Boolean(local), matchedBy, localOrderId: local?.id ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, duplicateWouldBeBlocked, alreadyReconciled, canReconcile, canRecoverFromDetectedNotes, label });
+      return { payment_id: p.id, order_id: p.order_id ?? null, amount: Number(p.amount), currency: p.currency, status: p.status, method: p.method ?? null, contact: p.contact ?? null, email: p.email ?? null, created_at: new Date((p.created_at ?? 0) * 1000).toISOString(), localOrderFound: Boolean(local), localOrderId: local?.id ?? null, propertyId: local?.property_id ?? null, propertyTitle: (local?.properties as { title?: string } | null)?.title ?? null, plan: local?.plan_name ?? local?.plan_key ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, localStatus: local?.status ?? null, duplicateWouldBeBlocked, alreadyReconciled, canReconcile, canRecover, label, matchedBy, detectedFromRazorpayNotes, detectedPropertyId, detectedOwnerId, detectedPlanId, detectedPlanKey, detectedPurpose, detectedPropertyTitle, detectedPropertyStatus, detectedPlanName, detectedPlanAmountPaise, detectedPlanCurrency, amountMatchesDetectedPlan, currencyMatchesDetectedPlan, canRecoverFromDetectedNotes };
     }));
     console.info("[admin/property-featured/reconcile/razorpay-payments] scanner", { requestedCount: count, returned: data.length, onlyCaptured, matches: data.filter((d) => d.localOrderFound).length });
     return NextResponse.json({ success: true, count: data.length, data });
