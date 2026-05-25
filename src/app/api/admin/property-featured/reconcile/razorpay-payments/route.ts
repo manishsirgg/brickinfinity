@@ -15,15 +15,36 @@ export async function GET(req: Request) {
     const payments = await getRazorpayClient().payments.all({ count, ...(from ? { from } : {}), ...(to ? { to } : {}) });
     const rows = onlyCaptured ? payments.items.filter((p) => p.status === "captured") : payments.items;
     const orderIds = rows.map((p) => p.order_id).filter(Boolean) as string[];
-    const { data: localOrders } = orderIds.length ? await supabaseAdmin.from("property_featured_orders").select("id, property_id, plan_name, plan_key, payment_status, status, razorpay_order_id, properties:property_id(title)").in("razorpay_order_id", orderIds) : { data: [] as any[] };
+    const paymentIds = rows.map((p) => p.id).filter(Boolean) as string[];
+    const { data: localOrders } = (orderIds.length || paymentIds.length)
+      ? await supabaseAdmin
+          .from("property_featured_orders")
+          .select("id, property_id, plan_name, plan_key, payment_status, activation_status, status, razorpay_order_id, razorpay_payment_id, properties:property_id(title)")
+          .or([
+            orderIds.length ? `razorpay_order_id.in.(${orderIds.map((id) => `\"${id}\"`).join(",")})` : null,
+            paymentIds.length ? `razorpay_payment_id.in.(${paymentIds.map((id) => `\"${id}\"`).join(",")})` : null,
+          ].filter(Boolean).join(","))
+      : { data: [] as any[] };
     const orderMap = new Map((localOrders ?? []).map((o) => [o.razorpay_order_id, o]));
+    const paymentMap = new Map((localOrders ?? []).map((o) => [o.razorpay_payment_id, o]));
 
     const data = rows.map((p) => {
-      const local = p.order_id ? orderMap.get(p.order_id) : null;
-      const localPaid = ["paid", "success", "captured"].includes(String(local?.payment_status ?? "").toLowerCase()) || ["paid", "success", "captured"].includes(String(local?.status ?? "").toLowerCase());
-      const canReconcile = Boolean(local && !localPaid && p.status === "captured");
-      console.info("[admin/property-featured/reconcile/razorpay-payments] payment match", { paymentId: p.id, orderId: p.order_id ?? null, localOrderId: local?.id ?? null, canReconcile });
-      return { payment_id: p.id, order_id: p.order_id ?? null, amount: Number(p.amount), currency: p.currency, status: p.status, method: p.method ?? null, contact: p.contact ?? null, email: p.email ?? null, created_at: new Date((p.created_at ?? 0) * 1000).toISOString(), localOrderFound: Boolean(local), localOrderId: local?.id ?? null, propertyId: local?.property_id ?? null, propertyTitle: (local?.properties as { title?: string } | null)?.title ?? null, plan: local?.plan_name ?? local?.plan_key ?? null, localPaymentStatus: local?.payment_status ?? null, localStatus: local?.status ?? null, canReconcile };
+      const matchedBy = p.order_id && orderMap.get(p.order_id)
+        ? "razorpay_order_id"
+        : paymentMap.get(p.id)
+          ? "razorpay_payment_id"
+          : null;
+      const local = matchedBy === "razorpay_order_id"
+        ? (p.order_id ? orderMap.get(p.order_id) : null)
+        : paymentMap.get(p.id) ?? null;
+      const localPaymentStatus = String(local?.payment_status ?? "").toLowerCase();
+      const localActivationStatus = String(local?.activation_status ?? "").toLowerCase();
+      const alreadyReconciled = Boolean(local && (["paid", "success", "captured"].includes(localPaymentStatus) || ["active", "scheduled"].includes(localActivationStatus)));
+      const canReconcile = Boolean(local && !alreadyReconciled && p.status === "captured");
+      const canRecover = !local;
+      const label = alreadyReconciled ? "Already Reconciled" : canReconcile ? "Ready to Reconcile" : "Needs Manual Review";
+      console.info("[admin/property-featured/reconcile/razorpay-payments] payment match", { payment_id: p.id, payment_order_id: p.order_id ?? null, matchedBy, localOrderId: local?.id ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, alreadyReconciled, canReconcile, canRecover });
+      return { payment_id: p.id, order_id: p.order_id ?? null, amount: Number(p.amount), currency: p.currency, status: p.status, method: p.method ?? null, contact: p.contact ?? null, email: p.email ?? null, created_at: new Date((p.created_at ?? 0) * 1000).toISOString(), localOrderFound: Boolean(local), localOrderId: local?.id ?? null, propertyId: local?.property_id ?? null, propertyTitle: (local?.properties as { title?: string } | null)?.title ?? null, plan: local?.plan_name ?? local?.plan_key ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, localStatus: local?.status ?? null, alreadyReconciled, canReconcile, canRecover, label, matchedBy };
     });
     console.info("[admin/property-featured/reconcile/razorpay-payments] scanner", { requestedCount: count, returned: data.length, onlyCaptured, matches: data.filter((d) => d.localOrderFound).length });
     return NextResponse.json({ success: true, count: data.length, data });

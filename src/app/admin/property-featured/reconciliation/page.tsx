@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Plan = { id: string; name: string; plan_key: string; amount_paise: number; currency: string };
 type PropertyPreview = { id: string; title: string | null; status: string | null; seller_id: string | null; deleted_at: string | null } | null;
 
-type RazorpayPaymentRow = { payment_id: string; order_id: string | null; amount: number; currency: string; status: string; contact: string | null; email: string | null; localOrderFound: boolean; localOrderId: string | null; canReconcile: boolean; localPaymentStatus: string | null; };
+type RazorpayPaymentRow = { payment_id: string; order_id: string | null; amount: number; currency: string; status: string; contact: string | null; email: string | null; localOrderFound: boolean; localOrderId: string | null; propertyId?: string | null; canReconcile: boolean; canRecover: boolean; alreadyReconciled: boolean; label: string; localPaymentStatus: string | null; localActivationStatus?: string | null; matchedBy?: "razorpay_order_id" | "razorpay_payment_id" | null; };
 type LocalOrderRow = { local_order_id: string; property_title: string | null; payment_status: string | null; activation_status: string | null; created_at: string; razorpay_payment_id: string | null; paid_at?: string | null; amount_paise: number; currency: string | null; };
 
 export default function FeaturedReconciliationPage() {
@@ -19,6 +19,7 @@ export default function FeaturedReconciliationPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [propertyPreview, setPropertyPreview] = useState<PropertyPreview>(null);
+  const [showAlreadyReconciled, setShowAlreadyReconciled] = useState(true);
 
   const fetchScanner = async () => { setLoadingScanner(true); const res = await fetch("/api/admin/property-featured/reconcile/razorpay-payments?count=30&onlyCaptured=true"); const json = await res.json(); setScannerRows(json.data ?? []); setLoadingScanner(false); };
   const fetchPlans = async () => { const res = await fetch('/api/property-featured/plans'); const json = await res.json(); setPlans(json.plans ?? []); };
@@ -56,6 +57,7 @@ export default function FeaturedReconciliationPage() {
   };
 
   const selectedPlan = useMemo(() => plans.find((p) => p.id === selectedPlanId) ?? null, [plans, selectedPlanId]);
+  const visibleScannerRows = useMemo(() => showAlreadyReconciled ? scannerRows : scannerRows.filter((row) => !row.alreadyReconciled), [scannerRows, showAlreadyReconciled]);
   const isStaleCancellable = (row: LocalOrderRow) => ["created", "pending"].includes(String(row.payment_status ?? "").toLowerCase()) && ["created", "pending"].includes(String(row.activation_status ?? "").toLowerCase()) && !row.razorpay_payment_id && !row.paid_at;
 
   return <div className="max-w-7xl mx-auto p-8 space-y-6">
@@ -67,8 +69,11 @@ export default function FeaturedReconciliationPage() {
     </section>
 
     <section className="border rounded-xl p-4 bg-white space-y-3">
-      <h2 className="font-semibold">Razorpay Captured Payments</h2>
-      <div className="overflow-auto"><table className="w-full text-xs"><thead><tr className="border-b"><th className="p-2 text-left">Payment</th><th className="p-2 text-left">Amount</th><th className="p-2 text-left">Contact</th><th className="p-2 text-left">Local match</th><th className="p-2 text-left">Action</th></tr></thead><tbody>{scannerRows.map((p)=><tr key={p.payment_id} className="border-b align-top"><td className="p-2">{p.payment_id}<div>{p.order_id || "-"}</div></td><td className="p-2">{(p.amount/100).toFixed(2)} {p.currency}<div>{p.status}</div></td><td className="p-2">{p.contact || "-"}<div>{p.email || "-"}</div></td><td className="p-2">{p.localOrderFound ? `${p.localOrderId} (${p.localPaymentStatus || "-"})` : <span className="px-2 py-1 bg-orange-100 rounded">Needs Manual Review</span>}</td><td className="p-2">{!p.localOrderFound && p.status === 'captured' ? <button onClick={() => { setRecoveringPaymentId(p.payment_id); setSelectedPropertyId(''); setSelectedPlanId(''); setPropertyPreview(null); }} className="px-2 py-1 rounded bg-orange-600 text-white">Recover Manually</button> : '-'}</td></tr>)}</tbody></table></div>
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">Razorpay Captured Payments</h2>
+        <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showAlreadyReconciled} onChange={(e) => setShowAlreadyReconciled(e.target.checked)} /> Show already reconciled payments</label>
+      </div>
+      <div className="overflow-auto"><table className="w-full text-xs"><thead><tr className="border-b"><th className="p-2 text-left">Payment</th><th className="p-2 text-left">Amount</th><th className="p-2 text-left">Contact</th><th className="p-2 text-left">Local match</th><th className="p-2 text-left">Action</th></tr></thead><tbody>{visibleScannerRows.map((p)=><tr key={p.payment_id} className="border-b align-top"><td className="p-2">{p.payment_id}<div>{p.order_id || "-"}</div></td><td className="p-2">{(p.amount/100).toFixed(2)} {p.currency}<div>{p.status}</div></td><td className="p-2">{p.contact || "-"}<div>{p.email || "-"}</div></td><td className="p-2">{p.localOrderFound ? <div><div>{p.localOrderId} / {p.propertyId || '-'} ({p.localPaymentStatus || "-"}, {p.localActivationStatus || "-"})</div><span className={`px-2 py-1 rounded ${p.alreadyReconciled ? 'bg-green-100 text-green-700' : p.canReconcile ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{p.label}</span></div> : <span className="px-2 py-1 bg-orange-100 rounded">Needs Manual Review</span>}</td><td className="p-2">{p.canReconcile ? <button onClick={async () => { const response = await fetch('/api/admin/property-featured/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ local_order_id: p.localOrderId, razorpay_order_id: p.order_id, razorpay_payment_id: p.payment_id, source: 'razorpay_scanner' }) }); const data = await response.json(); setResult(data); await fetchScanner(); await fetchLocalOrders(); }} className="px-2 py-1 rounded bg-blue-600 text-white">Reconcile</button> : p.canRecover ? <button onClick={() => { setRecoveringPaymentId(p.payment_id); setSelectedPropertyId(''); setSelectedPlanId(''); setPropertyPreview(null); }} className="px-2 py-1 rounded bg-orange-600 text-white">Recover Manually</button> : <span className="text-gray-500">Already Reconciled</span>}</td></tr>)}</tbody></table></div>
     </section>
 
     {recoveringPaymentId && (() => { const row = scannerRows.find((r) => r.payment_id === recoveringPaymentId); if (!row) return null; return <section className="border rounded-xl p-4 bg-white space-y-3">
