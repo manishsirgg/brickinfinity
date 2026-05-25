@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { getRazorpayClient } from "@/lib/razorpay";
 import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
 
@@ -22,6 +23,7 @@ function errorResponse(message: string, code: string, status: number, details?: 
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
+    const supabaseAdmin = createServiceClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -177,7 +179,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const { data: insertedOrder, error: orderInsertError } = await supabase
+    const { data: insertedOrder, error: orderInsertError } = await supabaseAdmin
       .from("property_featured_orders")
       .insert({
         property_id: property.id,
@@ -192,6 +194,7 @@ export async function POST(req: Request) {
         payment_status: "created",
         activation_status: "pending",
         razorpay_order_id: razorpayOrder.id,
+        receipt,
         metadata: {
           razorpay_order: razorpayOrder,
           created_from: "seller_dashboard",
@@ -201,7 +204,27 @@ export async function POST(req: Request) {
       .single();
 
     if (orderInsertError || !insertedOrder) {
-      throw orderInsertError ?? new Error("Unable to create featured listing order row");
+      console.error("[property-featured/create-order] featured order insert failed", {
+        code: orderInsertError?.code ?? null,
+        message: orderInsertError?.message ?? "Unable to create featured listing order row",
+        details: orderInsertError?.details ?? null,
+        hint: orderInsertError?.hint ?? null,
+        propertyId: property.id,
+        ownerId: appUser.id,
+        planId: plan.id,
+        razorpayOrderId: razorpayOrder.id,
+      });
+
+      return errorResponse(
+        "Unable to save featured listing payment order.",
+        "FEATURED_ORDER_INSERT_FAILED",
+        500,
+        {
+          razorpayOrderId: razorpayOrder.id,
+          propertyId: property.id,
+          planId: plan.id,
+        }
+      );
     }
 
     return NextResponse.json(
