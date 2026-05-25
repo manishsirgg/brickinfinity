@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { notifyFeaturedPaymentEvent } from "@/lib/property-featured/communications";
 
 type VerifyBody = {
   featuredOrderId?: string;
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
 
     const { data: appUser, error: appUserError } = await supabase
       .from("users")
-      .select("id")
+      .select("id, full_name, email, phone, whatsapp_number")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     const lookupColumn = "razorpay_order_id";
     const { data: order, error: orderError } = await supabaseAdmin
       .from("property_featured_orders")
-      .select("id, property_id, owner_id, razorpay_order_id, payment_status, activation_status")
+      .select("id, property_id, owner_id, razorpay_order_id, payment_status, activation_status, plan_id, plan_name, amount_paise, currency, razorpay_payment_id")
       .eq(lookupColumn, body.razorpay_order_id)
       .maybeSingle();
 
@@ -184,6 +185,27 @@ export async function POST(req: Request) {
         })
         .eq("id", order.id);
 
+      void notifyFeaturedPaymentEvent({
+        supabaseAdmin,
+        sellerId: order.owner_id,
+        sellerName: appUser.full_name,
+        sellerEmail: appUser.email,
+        sellerPhone: appUser.phone,
+        sellerWhatsapp: appUser.whatsapp_number,
+        propertyId: order.property_id,
+        planId: order.plan_id,
+        planName: order.plan_name,
+        localOrderId: order.id,
+        razorpayOrderId: body.razorpay_order_id,
+        razorpayPaymentId: body.razorpay_payment_id,
+        activationStatus: "failed",
+        paymentStatus: "failed",
+        amount: order.amount_paise,
+        currency: order.currency,
+        outcome: "failed",
+        reason: "Invalid Razorpay signature",
+      });
+
       return NextResponse.json(
         { ok: false, error: "Invalid payment signature." },
         { status: 400 }
@@ -198,6 +220,26 @@ export async function POST(req: Request) {
 
     if (activationError) {
       console.error("[property-featured/verify]", activationError);
+      void notifyFeaturedPaymentEvent({
+        supabaseAdmin,
+        sellerId: order.owner_id,
+        sellerName: appUser.full_name,
+        sellerEmail: appUser.email,
+        sellerPhone: appUser.phone,
+        sellerWhatsapp: appUser.whatsapp_number,
+        propertyId: order.property_id,
+        planId: order.plan_id,
+        planName: order.plan_name,
+        localOrderId: order.id,
+        razorpayOrderId: body.razorpay_order_id,
+        razorpayPaymentId: body.razorpay_payment_id,
+        activationStatus: "pending",
+        paymentStatus: "paid",
+        amount: order.amount_paise,
+        currency: order.currency,
+        outcome: "pending",
+        reason: activationError.message,
+      });
       return NextResponse.json(
         {
           ok: false,
@@ -234,6 +276,28 @@ export async function POST(req: Request) {
       activationStatus,
       featuredStartsAt: propertyAfterActivation?.featured_started_at ?? null,
       featuredEndsAt: propertyAfterActivation?.featured_until ?? null,
+    });
+
+    const resolvedOutcome = activationStatus === "scheduled" ? "scheduled" : "active";
+
+    void notifyFeaturedPaymentEvent({
+      supabaseAdmin,
+      sellerId: order.owner_id,
+      sellerName: appUser.full_name,
+      sellerEmail: appUser.email,
+      sellerPhone: appUser.phone,
+      sellerWhatsapp: appUser.whatsapp_number,
+      propertyId: order.property_id,
+      planId: order.plan_id,
+      planName: order.plan_name,
+      localOrderId: order.id,
+      razorpayOrderId: body.razorpay_order_id,
+      razorpayPaymentId: body.razorpay_payment_id,
+      activationStatus,
+      paymentStatus: "paid",
+      amount: order.amount_paise,
+      currency: order.currency,
+      outcome: resolvedOutcome,
     });
 
     return NextResponse.json({
