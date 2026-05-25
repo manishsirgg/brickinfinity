@@ -35,6 +35,8 @@ interface CreateOrderResponse {
 
 interface VerifyResponse {
   ok: true;
+  status?: "active" | "scheduled";
+  activationStatus?: "active" | "scheduled";
   message: string;
   activation: {
     propertyId: string;
@@ -55,15 +57,18 @@ interface FeaturedListingModalProps {
 
 type ApiErrorResponse = {
   ok?: false;
+  message?: string;
   error?: string;
   code?: string;
   details?: unknown;
 };
 
 function getApiErrorMessage(value: unknown): string | null {
-  if (!value || typeof value !== "object" || !("error" in value)) return null;
-  const maybeError = (value as { error?: unknown }).error;
-  return typeof maybeError === "string" && maybeError.trim().length > 0 ? maybeError : null;
+  if (!value || typeof value !== "object") return null;
+  const maybeError = (value as { error?: unknown; message?: unknown }).error;
+  if (typeof maybeError === "string" && maybeError.trim().length > 0) return maybeError;
+  const maybeMessage = (value as { error?: unknown; message?: unknown }).message;
+  return typeof maybeMessage === "string" && maybeMessage.trim().length > 0 ? maybeMessage : null;
 }
 
 type RazorpayHandlerResponse = {
@@ -102,6 +107,7 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
   const [plans, setPlans] = useState<FeaturedPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [processingPlanKey, setProcessingPlanKey] = useState<string | null>(null);
 
   const sortedPlans = useMemo(() => [...plans].sort((a, b) => a.sort_order - b.sort_order), [plans]);
@@ -112,6 +118,7 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
     async function fetchPlans() {
       setLoadingPlans(true);
       setError(null);
+      setSuccessMessage(null);
       try {
         const response = await fetch("/api/property-featured/plans");
         const result = await response.json();
@@ -133,6 +140,7 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
     if (!propertyId || !canPromote) return;
     setProcessingPlanKey(plan.plan_key);
     setError(null);
+    setSuccessMessage(null);
     try {
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded || !window.Razorpay) throw new Error("Unable to load payment gateway. Please try again.");
@@ -201,8 +209,15 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
               throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed. If money was deducted, please contact support.");
             }
             const verifyData = verifyJson as VerifyResponse;
+            const status = verifyData.activationStatus ?? verifyData.status;
+            if (status === "scheduled") {
+              setSuccessMessage("Payment successful. Your Featured listing has been scheduled after your current active period.");
+            } else if (status === "active") {
+              setSuccessMessage("Payment successful. Your listing is now Featured.");
+            } else {
+              setSuccessMessage(verifyData.message || "Payment received. Featured activation is being finalized.");
+            }
             onVerified(verifyData.activation);
-            onClose();
           } catch (verifyErr) {
             setError(verifyErr instanceof Error ? verifyErr.message : "Payment verification failed. If money was deducted, please contact support.");
           } finally {
@@ -244,5 +259,5 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
   }
 
   if (!isOpen) return null;
-  return <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl md:text-2xl font-semibold">Choose Featured Listing Plan</h2><p className="text-sm text-muted mt-1">{propertyTitle || "Select a plan to boost this property's visibility."}</p></div><Button variant="secondary" onClick={onClose} disabled={Boolean(processingPlanKey)}>Close</Button></div>{!canPromote && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only active or approved properties can be promoted.</p>}{error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}{loadingPlans && <p className="text-muted">Loading featured plans...</p>}{!loadingPlans && sortedPlans.length === 0 && !error && <p className="text-muted">No plans available right now.</p>}<div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{sortedPlans.map((plan) => {const hasCompareAt = Boolean(plan.compare_at_amount_paise && plan.compare_at_amount_paise > plan.amount_paise);return <Card key={plan.id} className="p-5 space-y-3 border border-slate-200"><div className="flex flex-wrap gap-2">{plan.badge && <span className="badge-secondary">{plan.badge}</span>}{plan.is_popular && <span className="badge-success">Most Popular</span>}{plan.is_best_value && <span className="badge-warning">Best Value</span>}</div><h3 className="text-lg font-semibold">{plan.name}</h3><p className="text-sm text-muted">{plan.duration_days} days visibility</p><div><p className="text-2xl font-bold text-primary">{formatCurrency(plan.amount_paise)}</p>{hasCompareAt && <p className="text-sm text-muted line-through">{formatCurrency(plan.compare_at_amount_paise as number)}</p>}</div>{plan.description && <p className="text-sm text-muted">{plan.description}</p>}{Array.isArray(plan.benefits) && plan.benefits.length > 0 && <ul className="text-sm list-disc pl-5 space-y-1">{plan.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>}<Button className="w-full" disabled={!canPromote || Boolean(processingPlanKey)} onClick={() => handlePlanPurchase(plan)}>{processingPlanKey === plan.plan_key ? "Processing..." : "Select & Pay"}</Button></Card>;})}</div></div></div>;
+  return <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl md:text-2xl font-semibold">Choose Featured Listing Plan</h2><p className="text-sm text-muted mt-1">{propertyTitle || "Select a plan to boost this property's visibility."}</p></div><Button variant="secondary" onClick={onClose} disabled={Boolean(processingPlanKey)}>Close</Button></div>{!canPromote && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only active or approved properties can be promoted.</p>}{error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}{successMessage && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMessage}</p>}{loadingPlans && <p className="text-muted">Loading featured plans...</p>}{!loadingPlans && sortedPlans.length === 0 && !error && <p className="text-muted">No plans available right now.</p>}<div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{sortedPlans.map((plan) => {const hasCompareAt = Boolean(plan.compare_at_amount_paise && plan.compare_at_amount_paise > plan.amount_paise);return <Card key={plan.id} className="p-5 space-y-3 border border-slate-200"><div className="flex flex-wrap gap-2">{plan.badge && <span className="badge-secondary">{plan.badge}</span>}{plan.is_popular && <span className="badge-success">Most Popular</span>}{plan.is_best_value && <span className="badge-warning">Best Value</span>}</div><h3 className="text-lg font-semibold">{plan.name}</h3><p className="text-sm text-muted">{plan.duration_days} days visibility</p><div><p className="text-2xl font-bold text-primary">{formatCurrency(plan.amount_paise)}</p>{hasCompareAt && <p className="text-sm text-muted line-through">{formatCurrency(plan.compare_at_amount_paise as number)}</p>}</div>{plan.description && <p className="text-sm text-muted">{plan.description}</p>}{Array.isArray(plan.benefits) && plan.benefits.length > 0 && <ul className="text-sm list-disc pl-5 space-y-1">{plan.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>}<Button className="w-full" disabled={!canPromote || Boolean(processingPlanKey)} onClick={() => handlePlanPurchase(plan)}>{processingPlanKey === plan.plan_key ? "Processing..." : "Select & Pay"}</Button></Card>;})}</div></div></div>;
 }
