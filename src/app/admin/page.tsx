@@ -216,6 +216,14 @@ export default function AdminDashboard() {
         </Link>
 
       
+
+        <Link href="/admin/finance" className="border rounded-xl p-6 hover:bg-gray-50">
+          <div className="text-lg font-semibold">Finance & Payments</div>
+          <div className="text-sm text-gray-500 mt-1">
+            Track Featured revenue, payment status, and activation issues.
+          </div>
+        </Link>
+
         <Link href="/admin/property-featured/reconciliation" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Featured Payment Reconciliation</div>
           <div className="text-sm text-gray-500 mt-1">
