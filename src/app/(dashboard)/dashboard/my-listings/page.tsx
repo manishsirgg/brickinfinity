@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { useRouter } from "next/navigation";
+import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
 
 const supabase = createClient();
 
@@ -394,7 +395,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
                   const hasValidFeaturedUntil = Boolean(featuredUntilDate && !Number.isNaN(featuredUntilDate.getTime()));
                   const isFeaturedActive = property.is_featured === true && hasValidFeaturedUntil && (featuredUntilDate as Date) > now;
                   const isFeaturedExpired = property.is_featured === true && hasValidFeaturedUntil && (featuredUntilDate as Date) <= now;
-                  const canPromote = property.status === "approved" && !property.deleted_at;
+                  const canPromote = isFeaturePromotableStatus(property.status) && !property.deleted_at;
                   const promoteLabel = isFeaturedActive ? "Extend Featured" : isFeaturedExpired ? "Feature Again" : "Promote as Featured";
 
                   return (
@@ -413,8 +414,8 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
                         {promoteLabel}
                       </Button>
 
-                      {property.status !== "approved" && (
-                        <p className="text-xs text-muted">Only approved properties can be promoted.</p>
+                      {!isFeaturePromotableStatus(property.status) && (
+                        <p className="text-xs text-muted">Only active or approved properties can be promoted.</p>
                       )}
                     </div>
                   );
@@ -495,7 +496,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
         isOpen={featuredModalOpen}
         propertyId={selectedPropertyId}
         propertyTitle={selectedPropertyTitle}
-        canPromote={Boolean(properties.find((item) => item.id === selectedPropertyId && item.status === "approved" && !item.deleted_at))}
+        canPromote={Boolean(properties.find((item) => item.id === selectedPropertyId && isFeaturePromotableStatus(item.status) && !item.deleted_at))}
         onClose={() => setFeaturedModalOpen(false)}
         onVerified={(activation) => {
           setProperties((prev) => prev.map((item) => item.id === activation.propertyId ? {
