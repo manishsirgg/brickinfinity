@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     const since = new Date(); since.setDate(since.getDate() - 30);
     const { data: orders, error } = await supabaseAdmin
       .from("property_featured_orders")
-      .select("id, property_id, owner_id, plan_id, plan_key, plan_name, amount_paise, currency, status, payment_status, activation_status, razorpay_order_id, razorpay_payment_id, receipt, created_at, updated_at, properties:property_id (title)")
+      .select("id, property_id, owner_id, plan_id, plan_key, plan_name, amount_paise, currency, status, payment_status, activation_status, razorpay_order_id, razorpay_payment_id, paid_at, receipt, created_at, updated_at, properties:property_id (title)")
       .not("razorpay_order_id", "is", null)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false })
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       const alreadyPaidOrActive = isPaidOrActive(row);
       const classification = alreadyPaidOrActive ? "already_paid_or_active" : "pending_unreconciled";
       return {
-        local_order_id: row.id, property_id: row.property_id, property_title: (row.properties as { title?: string } | null)?.title ?? null, owner_id: row.owner_id, plan_id: row.plan_id, plan_key: row.plan_key, plan_name: row.plan_name, amount_paise: row.amount_paise, currency: row.currency, status: row.status, payment_status: row.payment_status, activation_status: row.activation_status, razorpay_order_id: row.razorpay_order_id, razorpay_payment_id: row.razorpay_payment_id, receipt: row.receipt, created_at: row.created_at, updated_at: row.updated_at,
+        local_order_id: row.id, property_id: row.property_id, property_title: (row.properties as { title?: string } | null)?.title ?? null, owner_id: row.owner_id, plan_id: row.plan_id, plan_key: row.plan_key, plan_name: row.plan_name, amount_paise: row.amount_paise, currency: row.currency, status: row.status, payment_status: row.payment_status, activation_status: row.activation_status, razorpay_order_id: row.razorpay_order_id, razorpay_payment_id: row.razorpay_payment_id, paid_at: row.paid_at, receipt: row.receipt, created_at: row.created_at, updated_at: row.updated_at,
         classification, classification_reason: alreadyPaidOrActive ? "Local order already marked paid/success/captured or active" : "Local order still pending and reconcilable", can_reconcile: !alreadyPaidOrActive,
       };
     });

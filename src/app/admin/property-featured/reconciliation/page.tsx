@@ -1,16 +1,19 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Plan = { id: string; name: string; plan_key: string; amount_paise: number; currency: string };
 type PropertyPreview = { id: string; title: string | null; status: string | null; seller_id: string | null; deleted_at: string | null } | null;
 
 type RazorpayPaymentRow = { payment_id: string; order_id: string | null; amount: number; currency: string; status: string; contact: string | null; email: string | null; localOrderFound: boolean; localOrderId: string | null; canReconcile: boolean; localPaymentStatus: string | null; };
+type LocalOrderRow = { local_order_id: string; property_title: string | null; payment_status: string | null; activation_status: string | null; created_at: string; razorpay_payment_id: string | null; paid_at?: string | null; amount_paise: number; currency: string | null; };
 
 export default function FeaturedReconciliationPage() {
   const [scannerRows, setScannerRows] = useState<RazorpayPaymentRow[]>([]);
+  const [recentLocalOrders, setRecentLocalOrders] = useState<LocalOrderRow[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loadingScanner, setLoadingScanner] = useState(false);
+  const [loadingLocalOrders, setLoadingLocalOrders] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [recoveringPaymentId, setRecoveringPaymentId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
@@ -19,8 +22,9 @@ export default function FeaturedReconciliationPage() {
 
   const fetchScanner = async () => { setLoadingScanner(true); const res = await fetch("/api/admin/property-featured/reconcile/razorpay-payments?count=30&onlyCaptured=true"); const json = await res.json(); setScannerRows(json.data ?? []); setLoadingScanner(false); };
   const fetchPlans = async () => { const res = await fetch('/api/property-featured/plans'); const json = await res.json(); setPlans(json.plans ?? []); };
+  const fetchLocalOrders = async () => { setLoadingLocalOrders(true); const res = await fetch('/api/admin/property-featured/reconcile/queue'); const json = await res.json(); setRecentLocalOrders(json.recentOrders ?? []); setLoadingLocalOrders(false); };
 
-  useEffect(() => { fetchScanner(); fetchPlans(); }, []);
+  useEffect(() => { fetchScanner(); fetchPlans(); fetchLocalOrders(); }, []);
 
   const fetchPropertyPreview = async () => {
     if (!selectedPropertyId.trim()) return;
@@ -34,12 +38,33 @@ export default function FeaturedReconciliationPage() {
     const data = await response.json();
     setResult(data);
     await fetchScanner();
+    await fetchLocalOrders();
+  };
+
+  const cancelStaleOrder = async (localOrderId: string) => {
+    const response = await fetch('/api/admin/property-featured/reconcile/cancel-stale-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ local_order_id: localOrderId }) });
+    const data = await response.json();
+    setResult(data);
+    await fetchLocalOrders();
+  };
+
+  const bulkCancelStaleOrders = async () => {
+    const response = await fetch('/api/admin/property-featured/reconcile/cancel-stale-orders', { method: 'POST' });
+    const data = await response.json();
+    setResult(data);
+    await fetchLocalOrders();
   };
 
   const selectedPlan = useMemo(() => plans.find((p) => p.id === selectedPlanId) ?? null, [plans, selectedPlanId]);
+  const isStaleCancellable = (row: LocalOrderRow) => ["created", "pending"].includes(String(row.payment_status ?? "").toLowerCase()) && ["created", "pending"].includes(String(row.activation_status ?? "").toLowerCase()) && !row.razorpay_payment_id && !row.paid_at;
 
   return <div className="max-w-7xl mx-auto p-8 space-y-6">
     <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">Featured Payment Reconciliation Queue</h1><button onClick={fetchScanner} className="px-3 py-2 rounded bg-black text-white">{loadingScanner ? "Refreshing..." : "Refresh Razorpay Payments"}</button></div>
+
+    <section className="border rounded-xl p-4 bg-white space-y-3">
+      <div className="flex items-center justify-between"><h2 className="font-semibold">Recent Local Orders</h2><div className="flex gap-2"><button onClick={fetchLocalOrders} className="px-2 py-1 rounded border text-sm">{loadingLocalOrders ? "Refreshing..." : "Refresh Local"}</button><button onClick={bulkCancelStaleOrders} className="px-2 py-1 rounded bg-red-700 text-white text-sm">Cancel stale {'>'}60 min</button></div></div>
+      <div className="overflow-auto"><table className="w-full text-xs"><thead><tr className="border-b"><th className="p-2 text-left">Local Order</th><th className="p-2 text-left">Property</th><th className="p-2 text-left">Amount</th><th className="p-2 text-left">Statuses</th><th className="p-2 text-left">Created</th><th className="p-2 text-left">Action</th></tr></thead><tbody>{recentLocalOrders.map((o)=><tr key={o.local_order_id} className="border-b align-top"><td className="p-2">{o.local_order_id}</td><td className="p-2">{o.property_title || '-'}</td><td className="p-2">{(Number(o.amount_paise || 0)/100).toFixed(2)} {o.currency || 'INR'}</td><td className="p-2"><div>Payment: <span className={String(o.payment_status).toLowerCase() === 'cancelled' ? 'text-red-700 font-semibold' : ''}>{o.payment_status || '-'}</span></div><div>Activation: <span className={String(o.activation_status).toLowerCase() === 'cancelled' ? 'text-red-700 font-semibold' : ''}>{o.activation_status || '-'}</span></div></td><td className="p-2">{new Date(o.created_at).toLocaleString()}</td><td className="p-2">{isStaleCancellable(o) ? <button onClick={() => cancelStaleOrder(o.local_order_id)} className="px-2 py-1 rounded bg-red-600 text-white">Cancel stale order</button> : '-'}</td></tr>)}</tbody></table></div>
+    </section>
 
     <section className="border rounded-xl p-4 bg-white space-y-3">
       <h2 className="font-semibold">Razorpay Captured Payments</h2>
@@ -60,6 +85,6 @@ export default function FeaturedReconciliationPage() {
       <div className="flex gap-2"><button disabled={!selectedPropertyId.trim() || !selectedPlanId} onClick={() => recover(row)} className="px-3 py-2 rounded bg-black text-white disabled:opacity-50">Recover & Activate</button><button onClick={() => setRecoveringPaymentId(null)} className="px-3 py-2 rounded border">Cancel</button></div>
     </section>; })()}
 
-    {result && <div className="border rounded-xl p-4 bg-gray-50 text-sm"><div className="font-semibold mb-1">Result Panel</div><div>Status: {result.status ?? result.code ?? (result.success ? 'success' : '-')}</div><div>Message: {result.message ?? result.error ?? '-'}</div>{result?.data && <div className="mt-2 space-y-1"><div>Recovered Local Order: {result.data.local_order_id}</div><div>Property: {result.data.property_title || '-'} ({result.data.property_id})</div><div>Plan: {result.data.plan_name || '-'} ({result.data.plan_id})</div><div>Amount: {(Number(result.data.amount_paise || 0)/100).toFixed(2)} {result.data.currency || 'INR'}</div><div>Razorpay Payment: {result.data.razorpay_payment_id}</div><div>Activation: {result.data.activation_status || '-'}</div><div>Featured Start: {result.data.featured_starts_at || '-'}</div><div>Featured End: {result.data.featured_ends_at || '-'}</div></div>}</div>}
+    {result && <div className="border rounded-xl p-4 bg-gray-50 text-sm"><div className="font-semibold mb-1">Result Panel</div><div>Status: {result.status ?? result.code ?? (result.success ? 'success' : '-')}</div><div>Message: {result.message ?? result.error ?? '-'}</div>{result?.data && <div className="mt-2 space-y-1"><div>Local Order: {result.data.local_order_id || '-'}</div></div>}</div>}
   </div>;
 }
