@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRazorpayClient } from "@/lib/razorpay";
+import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
 
 type CreateOrderBody = {
   propertyId?: string;
@@ -70,9 +71,9 @@ export async function POST(req: Request) {
       );
     }
 
-    if (property.status !== "approved") {
+    if (!isFeaturePromotableStatus(property.status)) {
       return NextResponse.json(
-        { ok: false, error: "Only approved properties can be promoted as Featured." },
+        { ok: false, error: "Only active or approved properties can be promoted as Featured." },
         { status: 400 }
       );
     }
