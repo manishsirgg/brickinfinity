@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getRazorpayClient } from "@/lib/razorpay";
+type LocalLookupResult = { local: any | null; matchedBy: "razorpay_order_id" | "razorpay_payment_id" | null; localLookupAttempted: boolean; localLookupOrderId: string | null; localLookupPaymentId: string | null; localLookupFound: boolean };
 
 function parseTime(input: string | null) { if (!input) return undefined; const n = Number(input); if (Number.isFinite(n) && n > 0) return Math.floor(n); const d = new Date(input); return Number.isNaN(d.getTime()) ? undefined : Math.floor(d.getTime() / 1000); }
 function errorResponse(message: string, code: string, status: number) { return NextResponse.json({ error: message, code }, { status }); }
@@ -14,21 +15,29 @@ export async function GET(req: Request) {
     const url = new URL(req.url); const from = parseTime(url.searchParams.get("from")); const to = parseTime(url.searchParams.get("to")); const count = Math.min(100, Math.max(1, Number(url.searchParams.get("count") ?? 20))); const onlyCaptured = (url.searchParams.get("onlyCaptured") ?? "true") !== "false";
     const payments = await getRazorpayClient().payments.all({ count, ...(from ? { from } : {}), ...(to ? { to } : {}) });
     const rows = onlyCaptured ? payments.items.filter((p) => p.status === "captured") : payments.items;
-    const orderIds = rows.map((p) => p.order_id).filter(Boolean) as string[];
-    const paymentIds = rows.map((p) => p.id).filter(Boolean) as string[];
-    const { data: localOrders } = (orderIds.length || paymentIds.length)
-      ? await supabaseAdmin
-          .from("property_featured_orders")
-          .select("id, property_id, plan_name, plan_key, payment_status, activation_status, status, razorpay_order_id, razorpay_payment_id, properties:property_id(title)")
-          .or([
-            orderIds.length ? `razorpay_order_id.in.(${orderIds.map((id) => `\"${id}\"`).join(",")})` : null,
-            paymentIds.length ? `razorpay_payment_id.in.(${paymentIds.map((id) => `\"${id}\"`).join(",")})` : null,
-          ].filter(Boolean).join(","))
-      : { data: [] as any[] };
-    const orderMap = new Map((localOrders ?? []).filter((o) => Boolean(o.razorpay_order_id)).map((o) => [o.razorpay_order_id, o]));
-    const paymentMap = new Map((localOrders ?? []).filter((o) => Boolean(o.razorpay_payment_id)).map((o) => [o.razorpay_payment_id, o]));
+    const localLookupResults: Array<[string, LocalLookupResult]> = await Promise.all(rows.map(async (payment) => {
+      const localLookupOrderId = payment.order_id ?? null;
+      const localLookupPaymentId = payment.id ?? null;
+      const orConditions = [
+        payment.order_id ? `razorpay_order_id.eq.${payment.order_id}` : null,
+        payment.id ? `razorpay_payment_id.eq.${payment.id}` : null,
+      ].filter(Boolean).join(",");
+      if (!orConditions) {
+        return [payment.id, { local: null, matchedBy: null, localLookupAttempted: false, localLookupOrderId, localLookupPaymentId, localLookupFound: false }];
+      }
+      const { data: localMatches } = await supabaseAdmin
+        .from("property_featured_orders")
+        .select("id, property_id, plan_name, plan_key, payment_status, activation_status, status, razorpay_order_id, razorpay_payment_id, properties:property_id(title)")
+        .or(orConditions);
+      const localByOrderId = payment.order_id ? (localMatches ?? []).find((o) => o.razorpay_order_id === payment.order_id) : null;
+      const localByPaymentId = (localMatches ?? []).find((o) => o.razorpay_payment_id === payment.id) ?? null;
+      const matchedBy = localByOrderId ? "razorpay_order_id" : localByPaymentId ? "razorpay_payment_id" : null;
+      const local = localByOrderId ?? localByPaymentId;
+      return [payment.id, { local, matchedBy, localLookupAttempted: true, localLookupOrderId, localLookupPaymentId, localLookupFound: Boolean(local) }];
+    }));
+    const localLookupMap = new Map(localLookupResults);
 
-    const noLocalRows = rows.filter((p) => !(p.order_id && orderMap.get(p.order_id)) && !paymentMap.get(p.id));
+    const noLocalRows = rows.filter((p) => !localLookupMap.get(p.id)?.local);
     const detectedOrders = await Promise.all(noLocalRows.map(async (payment) => {
       if (!payment.order_id) return [payment.id, null] as const;
       try {
@@ -42,14 +51,9 @@ export async function GET(req: Request) {
     const detectedOrderMap = new Map(detectedOrders);
 
     const data = await Promise.all(rows.map(async (p) => {
-      const matchedBy = p.order_id && orderMap.get(p.order_id)
-        ? "razorpay_order_id"
-        : paymentMap.get(p.id)
-          ? "razorpay_payment_id"
-          : null;
-      const local = matchedBy === "razorpay_order_id"
-        ? (p.order_id ? orderMap.get(p.order_id) : null)
-        : paymentMap.get(p.id) ?? null;
+      const localLookup = localLookupMap.get(p.id) ?? { local: null, matchedBy: null, localLookupAttempted: false, localLookupOrderId: p.order_id ?? null, localLookupPaymentId: p.id ?? null, localLookupFound: false };
+      const matchedBy = localLookup.matchedBy;
+      const local = localLookup.local;
       const localPaymentStatus = String(local?.payment_status ?? "").toLowerCase();
       const localActivationStatus = String(local?.activation_status ?? "").toLowerCase();
       const localStatus = String(local?.status ?? "").toLowerCase();
@@ -108,7 +112,7 @@ export async function GET(req: Request) {
           : "Needs Manual Review";
       console.info("[admin/property-featured/reconcile/razorpay-payments] detected notes", { payment_id: p.id, razorpay_order_id: p.order_id ?? null, detectedPurpose, detectedPropertyId, detectedPlanKey, detectedOwnerId, amountMatchesDetectedPlan, canRecoverFromDetectedNotes });
       console.info("[admin/property-featured/reconcile/razorpay-payments] payment match", { payment_id: p.id, payment_order_id: p.order_id ?? null, localOrderFound: Boolean(local), matchedBy, localOrderId: local?.id ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, duplicateWouldBeBlocked, alreadyReconciled, canReconcile, canRecoverFromDetectedNotes, label });
-      return { payment_id: p.id, order_id: p.order_id ?? null, amount: Number(p.amount), currency: p.currency, status: p.status, method: p.method ?? null, contact: p.contact ?? null, email: p.email ?? null, created_at: new Date((p.created_at ?? 0) * 1000).toISOString(), localOrderFound: Boolean(local), localOrderId: local?.id ?? null, propertyId: local?.property_id ?? null, propertyTitle: (local?.properties as { title?: string } | null)?.title ?? null, plan: local?.plan_name ?? local?.plan_key ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, localStatus: local?.status ?? null, duplicateWouldBeBlocked, alreadyReconciled, canReconcile, canRecover, label, matchedBy, detectedFromRazorpayNotes, detectedPropertyId, detectedOwnerId, detectedPlanId, detectedPlanKey, detectedPurpose, detectedPropertyTitle, detectedPropertyStatus, detectedPlanName, detectedPlanAmountPaise, detectedPlanCurrency, amountMatchesDetectedPlan, currencyMatchesDetectedPlan, canRecoverFromDetectedNotes };
+      return { payment_id: p.id, order_id: p.order_id ?? null, amount: Number(p.amount), currency: p.currency, status: p.status, method: p.method ?? null, contact: p.contact ?? null, email: p.email ?? null, created_at: new Date((p.created_at ?? 0) * 1000).toISOString(), localOrderFound: Boolean(local), localOrderId: local?.id ?? null, propertyId: local?.property_id ?? null, propertyTitle: (local?.properties as { title?: string } | null)?.title ?? null, plan: local?.plan_name ?? local?.plan_key ?? null, localPaymentStatus: local?.payment_status ?? null, localActivationStatus: local?.activation_status ?? null, localStatus: local?.status ?? null, duplicateWouldBeBlocked, alreadyReconciled, canReconcile, canRecover, label, matchedBy, detectedFromRazorpayNotes, detectedPropertyId, detectedOwnerId, detectedPlanId, detectedPlanKey, detectedPurpose, detectedPropertyTitle, detectedPropertyStatus, detectedPlanName, detectedPlanAmountPaise, detectedPlanCurrency, amountMatchesDetectedPlan, currencyMatchesDetectedPlan, canRecoverFromDetectedNotes, localLookupAttempted: localLookup.localLookupAttempted, localLookupOrderId: localLookup.localLookupOrderId, localLookupPaymentId: localLookup.localLookupPaymentId, localLookupFound: localLookup.localLookupFound };
     }));
     console.info("[admin/property-featured/reconcile/razorpay-payments] scanner", { requestedCount: count, returned: data.length, onlyCaptured, matches: data.filter((d) => d.localOrderFound).length });
     return NextResponse.json({ success: true, count: data.length, data });
