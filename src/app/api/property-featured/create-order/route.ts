@@ -120,6 +120,7 @@ export async function POST(req: Request) {
     console.info("[property-featured/create-order] razorpay env check", {
       hasKeyId: Boolean(razorpayKeyId),
       hasKeySecret: Boolean(razorpayKeySecret),
+      razorpayKeyPrefix: razorpayKeyId ? razorpayKeyId.slice(0, 10) : null,
     });
     if (!razorpayKeyId || !razorpayKeySecret) {
       return errorResponse("Razorpay is not configured on the server.", "RAZORPAY_NOT_CONFIGURED", 500);
@@ -144,6 +145,7 @@ export async function POST(req: Request) {
         },
       });
       console.info("[property-featured/create-order] razorpay order created", {
+        razorpayKeyPrefix: razorpayKeyId.slice(0, 10),
         razorpayOrderId: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
