@@ -12,6 +12,19 @@ type VerifyBody = {
   planId?: string;
 };
 
+type ActivationStatus = "active" | "scheduled";
+
+function buildActivationResponse(status: ActivationStatus) {
+  return {
+    status,
+    activationStatus: status,
+    message:
+      status === "scheduled"
+        ? "Payment successful. Your Featured listing has been scheduled after your current active period."
+        : "Payment successful. Your listing is now Featured.",
+  };
+}
+
 function safeSignatureMatch(expected: string, provided: string): boolean {
   const expectedBuffer = Buffer.from(expected, "utf8");
   const providedBuffer = Buffer.from(provided, "utf8");
@@ -123,7 +136,15 @@ export async function POST(req: Request) {
       );
     }
 
-    if (order.payment_status === "paid" && order.activation_status === "active") {
+    if (
+      order.payment_status === "paid" &&
+      (order.activation_status === "active" || order.activation_status === "scheduled")
+    ) {
+      const idempotentStatus = order.activation_status as ActivationStatus;
+      console.info("[property-featured/verify] idempotent success", {
+        orderId: order.id,
+        activationStatus: idempotentStatus,
+      });
       const { data: propertyAfterActivation } = await supabaseAdmin
         .from("properties")
         .select("id, featured_started_at, featured_until")
@@ -132,7 +153,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
-        message: "Your property is now Featured.",
+        ...buildActivationResponse(idempotentStatus),
         activation: {
           propertyId: order.property_id,
           featuredOrderId: order.id,
@@ -192,6 +213,15 @@ export async function POST(req: Request) {
       activationStatusBefore: order.activation_status,
     });
 
+    const { data: updatedOrder } = await supabaseAdmin
+      .from("property_featured_orders")
+      .select("activation_status")
+      .eq("id", order.id)
+      .maybeSingle();
+
+    const activationStatus: ActivationStatus =
+      updatedOrder?.activation_status === "scheduled" ? "scheduled" : "active";
+
     const { data: propertyAfterActivation } = await supabaseAdmin
       .from("properties")
       .select("id, featured_started_at, featured_until")
@@ -201,13 +231,14 @@ export async function POST(req: Request) {
     console.info("[property-featured/verify] activation result", {
       orderId: order.id,
       propertyId: order.property_id,
+      activationStatus,
       featuredStartsAt: propertyAfterActivation?.featured_started_at ?? null,
       featuredEndsAt: propertyAfterActivation?.featured_until ?? null,
     });
 
     return NextResponse.json({
       ok: true,
-      message: "Your property is now Featured.",
+      ...buildActivationResponse(activationStatus),
       activation: {
         propertyId: order.property_id,
         featuredOrderId: order.id,
