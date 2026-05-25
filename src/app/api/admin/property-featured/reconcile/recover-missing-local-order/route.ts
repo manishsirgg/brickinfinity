@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { getRazorpayClient } from "@/lib/razorpay";
 import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
 
-type RecoverBody = { razorpay_order_id?: string; razorpay_payment_id?: string; property_id?: string; plan_id?: string };
+type RecoverBody = { razorpay_order_id?: string; razorpay_payment_id?: string; property_id?: string; plan_id?: string; source?: "admin_razorpay_scanner" | "razorpay_notes_detected" };
 const errorResponse = (message: string, code: string, status: number, details?: Record<string, unknown>) => NextResponse.json({ error: message, code, ...(details ? { details } : {}) }, { status });
 async function requireAdmin() { const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return { error: errorResponse("Authentication required.", "UNAUTHENTICATED", 401) }; const { data: adminProfile, error } = await supabase.from("users").select("id, role").eq("user_id", user.id).maybeSingle(); if (error || !adminProfile || !["admin", "super_admin"].includes(adminProfile.role)) return { error: errorResponse("Admin access required.", "FORBIDDEN", 403) }; return { adminProfile }; }
 
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     const paidAt = safePayment.created_at ? new Date(safePayment.created_at * 1000).toISOString() : new Date().toISOString();
     const receipt = `recovered_${Date.now().toString(36)}_${safePayment.id.slice(-6)}`;
 
-    const { data: insertedOrder, error: insertError } = await supabaseAdmin.from("property_featured_orders").insert({ property_id: property.id, owner_id: property.seller_id, plan_id: plan.id, plan_key: plan.plan_key, plan_name: plan.name, duration_days: plan.duration_days, amount_paise: plan.amount_paise, compare_at_amount_paise: plan.compare_at_amount_paise, currency: plan.currency || "INR", payment_status: "paid", status: "success", activation_status: "pending", razorpay_order_id: body.razorpay_order_id, razorpay_payment_id: body.razorpay_payment_id, paid_at: paidAt, receipt, metadata: { recovery: true, recovery_source: "admin_razorpay_scanner", recovered_by_admin_id: adminAuth.adminProfile.id, razorpay_payment: safePayment } }).select("id").single();
+    const { data: insertedOrder, error: insertError } = await supabaseAdmin.from("property_featured_orders").insert({ property_id: property.id, owner_id: property.seller_id, plan_id: plan.id, plan_key: plan.plan_key, plan_name: plan.name, duration_days: plan.duration_days, amount_paise: plan.amount_paise, compare_at_amount_paise: plan.compare_at_amount_paise, currency: plan.currency || "INR", payment_status: "paid", status: "success", activation_status: "pending", razorpay_order_id: body.razorpay_order_id, razorpay_payment_id: body.razorpay_payment_id, paid_at: paidAt, receipt, metadata: { recovery: true, recovery_source: body.source ?? "admin_razorpay_scanner", recovered_by_admin_id: adminAuth.adminProfile.id, razorpay_payment: safePayment } }).select("id").single();
     if (insertError || !insertedOrder) return errorResponse("Failed to create local featured order.", "LOCAL_ORDER_CREATE_FAILED", 500);
 
     const { error: activationError } = await supabaseAdmin.rpc("activate_property_featured_order", { p_order_id: insertedOrder.id, p_razorpay_payment_id: body.razorpay_payment_id, p_razorpay_signature: null });
