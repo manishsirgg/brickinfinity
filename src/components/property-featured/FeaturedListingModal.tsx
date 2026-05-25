@@ -76,6 +76,7 @@ declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => {
       open: () => void;
+      on: (event: string, callback: (response: unknown) => void) => void;
     };
   }
 }
@@ -147,7 +148,23 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
       }
       const createOrderData = createOrderJson as CreateOrderResponse;
       const checkoutKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-      if (!checkoutKey) throw new Error("Payment gateway key is missing. Please contact support.");
+      if (!checkoutKey) {
+        setError("Razorpay checkout key is not configured.");
+        setProcessingPlanKey(null);
+        return;
+      }
+
+      console.info("[property-featured] checkout init", {
+        hasCheckoutKey: Boolean(checkoutKey),
+        checkoutKeyPrefix: checkoutKey.slice(0, 10),
+        razorpayOrderId: createOrderData.razorpayOrderId,
+        amount: createOrderData.amount,
+        currency: createOrderData.currency,
+        propertyId,
+        planId: plan.id,
+      });
+
+      const prefill: { name?: string; email?: string; contact?: string } = {};
 
       const razorpay = new window.Razorpay({
         key: checkoutKey,
@@ -156,6 +173,7 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
         name: "Brick Infinity",
         description: `${createOrderData.plan.name} - Featured Listing`,
         order_id: createOrderData.razorpayOrderId,
+        ...(Object.keys(prefill).length > 0 ? { prefill } : {}),
         theme: { color: "#0f172a" },
         notes: { featured_order_id: createOrderData.featuredOrderId },
         modal: {
@@ -189,6 +207,32 @@ export default function FeaturedListingModal({ isOpen, propertyId, propertyTitle
             setProcessingPlanKey(null);
           }
         },
+      });
+      razorpay.on("payment.failed", (response) => {
+        const typedResponse = response as {
+          error?: {
+            code?: string;
+            description?: string;
+            source?: string;
+            step?: string;
+            reason?: string;
+            metadata?: {
+              order_id?: string;
+              payment_id?: string;
+            };
+          };
+        };
+        console.error("[property-featured] razorpay payment failed", {
+          code: typedResponse?.error?.code,
+          description: typedResponse?.error?.description,
+          source: typedResponse?.error?.source,
+          step: typedResponse?.error?.step,
+          reason: typedResponse?.error?.reason,
+          order_id: typedResponse?.error?.metadata?.order_id,
+          payment_id: typedResponse?.error?.metadata?.payment_id,
+        });
+        setError(typedResponse?.error?.description || "Payment failed. Please try again.");
+        setProcessingPlanKey(null);
       });
       razorpay.open();
     } catch (err) {
