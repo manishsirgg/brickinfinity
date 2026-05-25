@@ -4,6 +4,14 @@ export const PAID_STATUSES = new Set(["paid", "success", "captured"]);
 export const FAILED_STATUSES = new Set(["failed", "payment_failed"]);
 export const PENDING_STATUSES = new Set(["pending", "created", "unpaid"]);
 
+type FinanceStatus =
+  | "revenue_success"
+  | "pending_payment"
+  | "real_failed_payment"
+  | "cancelled_by_user"
+  | "stale_cancelled"
+  | "manual_review";
+
 export type FeaturedOrder = {
   id: string;
   created_at: string;
@@ -42,6 +50,42 @@ export async function fetchFeaturedOrders() {
   })) as FeaturedOrder[];
 }
 
+function toText(value: unknown) {
+  return String(value ?? "").toLowerCase();
+}
+
+function getFailureText(order: FeaturedOrder) {
+  const metadata = order.metadata ?? {};
+  return [order.failure_reason, metadata.error, metadata.message, metadata.failure_reason, metadata.cancel_reason].map(toText).join(" ");
+}
+
 export function isPaid(status?: string | null) { return PAID_STATUSES.has(String(status ?? "").toLowerCase()); }
 export function isFailed(status?: string | null) { return FAILED_STATUSES.has(String(status ?? "").toLowerCase()); }
 export function isPending(status?: string | null) { return PENDING_STATUSES.has(String(status ?? "").toLowerCase()); }
+
+export function classifyFinanceStatus(order: FeaturedOrder): FinanceStatus {
+  const paymentStatus = toText(order.payment_status);
+  const activationStatus = toText(order.activation_status);
+  const failureText = getFailureText(order);
+
+  const hasStaleWording = ["stale unpaid razorpay order cancelled", "stale", "superseded", "already exists"].some((text) => failureText.includes(text));
+  const hasUserCancelledWording = ["user cancelled", "cancelled by user", "dismissed", "checkout closed", "payment cancelled by user"].some((text) => failureText.includes(text));
+
+  if (isPaid(paymentStatus)) {
+    if (!["active", "scheduled"].includes(activationStatus)) return "manual_review";
+    return "revenue_success";
+  }
+
+  if (isPending(paymentStatus)) return "pending_payment";
+
+  if (paymentStatus === "cancelled") {
+    if (hasStaleWording) return "stale_cancelled";
+    if (hasUserCancelledWording) return "cancelled_by_user";
+  }
+
+  if (isFailed(paymentStatus) || failureText.includes("razorpay") || failureText.includes("verification failed")) {
+    return "real_failed_payment";
+  }
+
+  return "pending_payment";
+}
