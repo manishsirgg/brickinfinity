@@ -205,6 +205,21 @@ export default function FeaturedListingModal({
         modal: {
           ondismiss: () => {
             setError("Payment was cancelled. Your listing was not activated.");
+            void (async () => {
+              try {
+                await fetch("/api/property-featured/payment-cancelled", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    featuredOrderId: createOrderData.featuredOrderId,
+                    razorpayOrderId: createOrderData.razorpayOrderId,
+                    reason: "checkout_dismissed",
+                  }),
+                });
+              } catch {
+                // best effort only - do not block or crash UI
+              }
+            })();
             setIsCheckoutOpen(false);
             setProcessingPlanKey(null);
           },
