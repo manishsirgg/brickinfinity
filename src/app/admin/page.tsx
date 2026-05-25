@@ -207,7 +207,14 @@ export default function AdminDashboard() {
           </div>
         </Link>
 
-      </div>
+      
+        <Link href="/admin/property-featured/reconciliation" className="border rounded-xl p-6 hover:bg-gray-50">
+          <div className="text-lg font-semibold">Featured Payment Reconciliation</div>
+          <div className="text-sm text-gray-500 mt-1">
+            Recover captured Razorpay payments for Featured listings
+          </div>
+        </Link>
+</div>
 
     </div>
   )
