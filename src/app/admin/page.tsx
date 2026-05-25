@@ -172,6 +172,14 @@ export default function AdminDashboard() {
           </div>
         </Link>
 
+
+        <Link href="/dashboard/my-listings" className="border rounded-xl p-6 hover:bg-gray-50">
+          <div className="text-lg font-semibold">Admin-Created Properties</div>
+          <div className="text-sm text-gray-500 mt-1">
+            View, edit, or delete properties created by admin
+          </div>
+        </Link>
+
         <Link href="/admin/reports" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Reports</div>
           <div className="text-sm text-gray-500 mt-1">
