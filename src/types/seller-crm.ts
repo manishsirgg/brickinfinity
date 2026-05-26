@@ -1,0 +1,20 @@
+export type SellerCrmContactType = "buyer" | "tenant" | "owner" | "investor" | "agent" | "other";
+export type SellerCrmLifecycleStage = "new" | "contacted" | "qualified" | "site_visit" | "negotiation" | "converted" | "lost" | "archived";
+export type SellerCrmLeadTemperature = "cold" | "warm" | "hot";
+export type SellerCrmDealType = "sale" | "rent" | "lease" | "other";
+export type SellerCrmDealStage = "new" | "qualified" | "property_shared" | "site_visit_scheduled" | "site_visit_done" | "negotiation" | "token_pending" | "agreement_pending" | "closed_won" | "closed_lost";
+export type SellerCrmFollowupStatus = "scheduled" | "completed" | "missed" | "cancelled";
+export type SellerCrmPriority = "low" | "medium" | "high" | "urgent";
+export type SellerCrmChannel = "call" | "whatsapp" | "email" | "sms" | "meeting" | "site_visit" | "system" | "other";
+export type SellerCrmActivityType = "lead_created" | "call" | "whatsapp" | "email" | "sms" | "meeting" | "site_visit" | "note" | "stage_change" | "deal_created" | "deal_updated" | "followup_created" | "followup_completed" | "property_shared" | "converted" | "lost" | "system";
+export type SellerCrmFileType = "image" | "document" | "audio" | "video" | "other";
+
+export interface SellerCrmContact { id: string; seller_id: string; created_by: string | null; updated_by: string | null; full_name: string; phone: string | null; whatsapp_number: string | null; email: string | null; contact_type: SellerCrmContactType | null; lifecycle_stage: SellerCrmLifecycleStage; lead_temperature: SellerCrmLeadTemperature; source: string | null; city: string | null; locality: string | null; budget_min: number | null; budget_max: number | null; next_followup_at: string | null; is_archived: boolean; created_at: string; updated_at: string; }
+export interface SellerCrmDeal { id: string; seller_id: string; contact_id: string; property_id: string | null; created_by: string | null; updated_by: string | null; title: string; deal_type: SellerCrmDealType; deal_stage: SellerCrmDealStage; expected_value: number | null; final_value: number | null; probability: number | null; expected_close_date: string | null; closed_at: string | null; won_reason: string | null; lost_reason: string | null; created_at: string; updated_at: string; }
+export interface SellerCrmFollowup { id: string; seller_id: string; contact_id: string | null; deal_id: string | null; property_id: string | null; created_by: string | null; updated_by: string | null; title: string; description: string | null; due_at: string; priority: SellerCrmPriority; channel: SellerCrmChannel; status: SellerCrmFollowupStatus; completed_at: string | null; cancelled_at: string | null; created_at: string; updated_at: string; }
+export interface SellerCrmActivity { id: string; seller_id: string; contact_id: string | null; deal_id: string | null; property_id: string | null; activity_type: SellerCrmActivityType; channel: SellerCrmChannel; title: string; body: string | null; old_value: string | null; new_value: string | null; created_at: string; }
+export interface SellerCrmNote { id: string; seller_id: string; contact_id: string | null; deal_id: string | null; body: string; created_by: string | null; updated_by: string | null; created_at: string; updated_at: string; }
+export interface SellerCrmSettings { seller_id: string; default_followup_hour: number; auto_archive_lost_after_days: number; enable_whatsapp_quick_actions: boolean; enable_email_quick_actions: boolean; enable_site_visit_pipeline: boolean; timezone: string; updated_at: string; }
+export interface SellerCrmDashboardSummary { seller_id: string; total_contacts: number; hot_leads: number; followups_today: number; overdue_followups: number; open_deals: number; pipeline_value: number; }
+export interface SellerCrmDealSummary { seller_id: string; open_deals: number; won_deals: number; lost_deals: number; pipeline_value: number; }
+export interface SellerCrmFollowupSummary { seller_id: string; scheduled: number; completed: number; overdue: number; cancelled: number; }
