@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { notifyFeaturedPaymentEvent } from "@/lib/property-featured/communications";
+import { finalizeFeaturedOrderPayment } from "@/lib/property-featured/finalize";
 
 type VerifyBody = {
   featuredOrderId?: string;
@@ -212,13 +213,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { error: activationError } = await supabaseAdmin.rpc("activate_property_featured_order", {
-      p_order_id: order.id,
-      p_razorpay_payment_id: body.razorpay_payment_id,
-      p_razorpay_signature: body.razorpay_signature,
-    });
-
-    if (activationError) {
+    try {
+      await finalizeFeaturedOrderPayment(supabaseAdmin, order.id, body.razorpay_payment_id);
+    } catch (activationError) {
       console.error("[property-featured/verify]", activationError);
       void notifyFeaturedPaymentEvent({
         supabaseAdmin,
@@ -238,7 +235,7 @@ export async function POST(req: Request) {
         amount: order.amount_paise,
         currency: order.currency,
         outcome: "pending",
-        reason: activationError.message,
+        reason: activationError instanceof Error ? activationError.message : "Unknown activation error",
       });
       return NextResponse.json(
         {

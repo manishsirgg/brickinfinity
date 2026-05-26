@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { finalizeFeaturedOrderPayment } from "@/lib/property-featured/finalize";
 
 type JsonObject = Record<string, unknown>;
 type SupportedWebhookEvent = "order.paid" | "payment.captured" | "payment.failed";
@@ -175,15 +176,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, alreadyProcessed: true }, { status: 200 });
     }
 
-    const { error: activationError } = await supabase.rpc("activate_property_featured_order", {
-      p_order_id: featuredOrder.id,
-      p_razorpay_payment_id: paymentId,
-      p_razorpay_signature: null,
-    });
-
-    if (activationError) {
+    try {
+      await finalizeFeaturedOrderPayment(supabase, featuredOrder.id, paymentId);
+    } catch (activationError) {
       console.error("[razorpay-webhook] Featured activation failed", {
-        message: activationError.message,
+        message: activationError instanceof Error ? activationError.message : "unknown",
         eventType,
         razorpayOrderId: orderId,
         featuredOrderId: featuredOrder.id,

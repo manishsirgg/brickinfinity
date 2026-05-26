@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getRazorpayClient } from "@/lib/razorpay";
+import { finalizeFeaturedOrderPayment } from "@/lib/property-featured/finalize";
 
 type ReconcileBody = {
   razorpay_order_id?: string;
@@ -214,19 +215,15 @@ export async function POST(req: Request) {
       });
     }
 
-    const { error: activationError } = await supabaseAdmin.rpc("activate_property_featured_order", {
-      p_order_id: order.id,
-      p_razorpay_payment_id: fetchedPayment.id,
-      p_razorpay_signature: null,
-    });
-
-    if (activationError) {
+    try {
+      await finalizeFeaturedOrderPayment(supabaseAdmin, order.id, fetchedPayment.id);
+    } catch (activationError) {
       console.error("[admin/property-featured/reconcile] activation failed", {
         adminProfileId: adminAuth.adminProfile.id,
         localOrderId: order.id,
         razorpay_order_id: razorpayOrderId,
         razorpay_payment_id: fetchedPayment.id,
-        activationError: activationError.message,
+        activationError: activationError instanceof Error ? activationError.message : "unknown",
       });
       return errorResponse("Payment verified, but featured activation failed.", "ACTIVATION_FAILED", 500);
     }
