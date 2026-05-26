@@ -22,8 +22,8 @@ export const formatRelativeDueStatus = (value?: string | null) => {
   const diffDays = Math.floor((dueStart - start) / 86400000);
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Tomorrow";
-  if (diffDays < 0) return `Overdue by ${Math.abs(diffDays)}d`;
-  return `${diffDays}d left`;
+  if (diffDays < 0) return "Overdue";
+  return formatDateTime(value);
 };
 
 export const humanize = (value?: string | null) => (value || "").replaceAll("_", " ").replace(/\b\w/g, (m) => m.toUpperCase()) || "—";

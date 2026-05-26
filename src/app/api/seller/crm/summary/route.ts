@@ -4,7 +4,7 @@ import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
 export async function GET() {
   try {
     const ctx = await resolveSellerCrmContext();
-    if (!ctx.ok) return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+    if (!ctx.ok) return NextResponse.json({ ok: false, error: ctx.error, details: ctx.details }, { status: ctx.status });
     const { supabase, sellerId } = ctx;
     const [{ data: dashboard }, { data: deals }, { data: followups }] = await Promise.all([
       supabase.from("seller_crm_dashboard_summary").select("*").eq("seller_id", sellerId).maybeSingle(),
@@ -13,7 +13,7 @@ export async function GET() {
     ]);
     return NextResponse.json({ ok: true, data: { dashboard: dashboard ?? null, deals: deals ?? null, followups: followups ?? null } });
   } catch (error) {
-    console.error("[seller-crm]", error);
+    console.error("[seller-crm/summary]", error);
     return NextResponse.json({ ok: false, error: "Unexpected error" }, { status: 500 });
   }
 }
