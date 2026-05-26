@@ -166,11 +166,18 @@ export async function POST(req: Request) {
       });
     }
 
-    if (order.payment_status === "paid" && order.activation_status === "active") {
+    const normalizedPaymentStatus = String(order.payment_status ?? "").toLowerCase();
+    const normalizedActivationStatus = String(order.activation_status ?? "").toLowerCase();
+    const isPaidTerminal = ["paid", "success", "captured"].includes(normalizedPaymentStatus);
+
+    if (isPaidTerminal && ["active", "scheduled"].includes(normalizedActivationStatus)) {
+      const isScheduled = normalizedActivationStatus === "scheduled";
       return NextResponse.json({
         success: true,
         status: "already_reconciled",
-        message: "Featured payment was already reconciled.",
+        message: isScheduled
+          ? "Featured payment already reconciled (scheduled activation)."
+          : "Featured payment already reconciled (active).",
         data: {
           local_order_id: order.id,
           property_id: order.property_id,
@@ -180,7 +187,8 @@ export async function POST(req: Request) {
           razorpay_payment_id: order.razorpay_payment_id ?? fetchedPayment.id,
           payment_status: order.payment_status,
           activation_status: order.activation_status,
-          activation_result: "already_active",
+          activation_result: isScheduled ? "already_scheduled" : "already_active",
+          reconciliation_label: isScheduled ? "Already Reconciled / Scheduled" : "Already Reconciled / Active",
         },
       });
     }
