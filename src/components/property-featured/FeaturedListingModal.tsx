@@ -55,7 +55,7 @@ interface FeaturedListingModalProps {
   hasScheduledExtension?: boolean;
   canPromote: boolean;
   onClose: () => void;
-  onVerified: (activation: VerifyResponse["activation"]) => void;
+  onVerified: (activation: VerifyResponse["activation"]) => Promise<void> | void;
 }
 
 type ApiErrorResponse = {
@@ -243,10 +243,10 @@ export default function FeaturedListingModal({
             if (!verifyResponse.ok || !verifyJson?.ok) throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed.");
             const verifyData = verifyJson as VerifyResponse;
             const status = verifyData.activationStatus ?? verifyData.status;
-            if (status === "scheduled") setSuccessMessage("Payment successful. Your higher Featured plan has been scheduled after your current active period.");
-            else if (status === "active") setSuccessMessage("Payment successful. Your listing is now Featured.");
+            await Promise.resolve(onVerified(verifyData.activation));
+            if (status === "scheduled") setSuccessMessage("Payment successful. Your higher featured plan has been scheduled after your current featured period.");
+            else if (status === "active") setSuccessMessage("Payment successful. Your property is now featured.");
             else setSuccessMessage("Payment received. Your Featured activation is being finalized. Please refresh after a few moments.");
-            onVerified(verifyData.activation);
           } catch (verifyErr) {
             setError(verifyErr instanceof Error ? verifyErr.message : "Payment verification failed.");
           } finally {
