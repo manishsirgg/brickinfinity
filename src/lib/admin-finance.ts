@@ -3,6 +3,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 export const PAID_STATUSES = new Set(["paid", "success", "captured"]);
 export const FAILED_STATUSES = new Set(["failed", "payment_failed"]);
 export const PENDING_STATUSES = new Set(["pending", "created", "unpaid"]);
+export const STALE_PENDING_MINUTES = 30;
+export const STALE_PENDING_CANCEL_REASON = "Stale pending Featured order cancelled by admin after no payment confirmation.";
 
 type FinanceStatus =
   | "revenue_success"
@@ -63,12 +65,22 @@ export function isPaid(status?: string | null) { return PAID_STATUSES.has(String
 export function isFailed(status?: string | null) { return FAILED_STATUSES.has(String(status ?? "").toLowerCase()); }
 export function isPending(status?: string | null) { return PENDING_STATUSES.has(String(status ?? "").toLowerCase()); }
 
+export function isStalePendingOrder(order: FeaturedOrder, now = new Date()) {
+  const activationStatus = String(order.activation_status ?? "").toLowerCase();
+  const createdAt = new Date(order.created_at);
+  const staleBefore = new Date(now.getTime() - STALE_PENDING_MINUTES * 60 * 1000);
+  return isPending(order.payment_status)
+    && !order.razorpay_payment_id
+    && !["active", "scheduled"].includes(activationStatus)
+    && createdAt <= staleBefore;
+}
+
 export function classifyFinanceStatus(order: FeaturedOrder): FinanceStatus {
   const paymentStatus = toText(order.payment_status);
   const activationStatus = toText(order.activation_status);
   const failureText = getFailureText(order);
 
-  const hasStaleWording = ["stale unpaid razorpay order cancelled", "stale", "superseded", "already exists"].some((text) => failureText.includes(text));
+  const hasStaleWording = ["stale unpaid razorpay order cancelled", "stale", "superseded", "already exists", toText(STALE_PENDING_CANCEL_REASON)].some((text) => failureText.includes(text));
   const hasUserCancelledWording = [
     "user cancelled",
     "cancelled by user",

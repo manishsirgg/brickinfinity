@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { classifyFinanceStatus, fetchFeaturedOrders, isPaid } from "@/lib/admin-finance";
+import { redirect } from "next/navigation";
+import { classifyFinanceStatus, fetchFeaturedOrders, isPaid, isStalePendingOrder, STALE_PENDING_MINUTES } from "@/lib/admin-finance";
 
 const pageSize = 15;
 
@@ -19,6 +20,15 @@ function badgeClass(kind: "green" | "red" | "yellow" | "slate" | "blue") {
 }
 
 export default async function AdminFinancePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  async function cancelStaleAction(formData: FormData) {
+    "use server";
+    const orderId = String(formData.get("orderId") ?? "");
+    if (!orderId) redirect("/admin/finance?error=missing_order_id");
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/admin/finance/property-featured/orders/${orderId}/cancel-stale`, { method: "POST", cache: "no-store" });
+    if (!response.ok) redirect("/admin/finance?error=cancel_stale_failed");
+    redirect("/admin/finance?success=stale_cancelled");
+  }
+
   const params = await searchParams;
   const search = String(params.q ?? "").toLowerCase();
   const pay = String(params.payment ?? "all").toLowerCase();
@@ -63,6 +73,8 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
 
   return <div className="max-w-7xl mx-auto p-8 space-y-6">
     <h1 className="text-2xl font-semibold">Finance & Payments — Property Featured</h1>
+    {params.success === "stale_cancelled" && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl p-3">Stale pending order cancelled successfully.</p>}
+    {params.error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">Unable to cancel stale pending order. Please review eligibility and retry.</p>}
     <div className="grid md:grid-cols-4 gap-3 text-sm">{[
       ["Total Revenue", formatInr(totalRevenue)], ["Revenue This Month", formatInr(revenueThisMonth)], ["Successful Payments", successfulPayments], ["Failed Payments", failedPayments],
       ["Pending Payments", pendingPayments], ["Cancelled / Stale Orders", cancelledOrStale], ["Active Featured Purchases", activePurchases], ["Scheduled Featured Purchases", scheduledPurchases], ["Manual Review", manualReview],
@@ -83,6 +95,7 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
       <tbody>
         {pageRows.length === 0 && <tr><td className="p-4" colSpan={8}>No Featured Listing payments found yet.</td></tr>}
         {pageRows.map((o) => {
+          const isStalePending = isStalePendingOrder(o);
           const paymentBadge = o.financeStatus === "revenue_success" || o.financeStatus === "manual_review" ? ["Paid", "green"] as const
             : o.financeStatus === "pending_payment" ? ["Pending", "yellow"] as const
             : o.financeStatus === "real_failed_payment" ? ["Failed", "red"] as const
@@ -95,7 +108,7 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
             : o.financeStatus === "cancelled_by_user" ? ["Cancelled by User", "slate"] as const
             : ["Needs Review", "red"] as const;
 
-          return <tr key={o.id} className="border-b align-top"><td className="p-2">{new Date(o.created_at).toLocaleString()}<div className="text-gray-500">Paid: {o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</div></td><td className="p-2">{o.users?.full_name || "-"}<div>{o.users?.email || "-"}</div><div>{o.users?.phone || "-"}</div></td><td className="p-2">{o.properties?.title || "-"}<div className="text-gray-500">{o.property_id || "-"}</div></td><td className="p-2">{o.plan_name || "-"}</td><td className="p-2">{formatInr(o.amount_paise)}<div>{o.currency || "INR"}</div></td><td className="p-2 space-y-1"><div className={badgeClass(paymentBadge[1])}>{paymentBadge[0]}</div><div><span className={badgeClass(activationBadge[1])}>{activationBadge[0]}</span></div>{o.financeStatus === "stale_cancelled" && <div className="text-slate-600">Unpaid Razorpay order cancelled because a successful paid order already exists.</div>}{o.financeStatus === "real_failed_payment" && <div className="text-red-600">{o.failure_reason || "Payment failed or verification failed."}</div>}</td><td className="p-2"><div>{o.razorpay_order_id || "-"}</div><div>{o.razorpay_payment_id || "-"}</div></td><td className="p-2"><Link className="underline" href={`/admin/finance/property-featured/${o.id}`}>View details</Link></td></tr>;
+          return <tr key={o.id} className="border-b align-top"><td className="p-2">{new Date(o.created_at).toLocaleString()}<div className="text-gray-500">Paid: {o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</div></td><td className="p-2">{o.users?.full_name || "-"}<div>{o.users?.email || "-"}</div><div>{o.users?.phone || "-"}</div></td><td className="p-2">{o.properties?.title || "-"}<div className="text-gray-500">{o.property_id || "-"}</div></td><td className="p-2">{o.plan_name || "-"}</td><td className="p-2">{formatInr(o.amount_paise)}<div>{o.currency || "INR"}</div></td><td className="p-2 space-y-1"><div className={badgeClass(paymentBadge[1])}>{paymentBadge[0]}</div><div><span className={badgeClass(activationBadge[1])}>{activationBadge[0]}</span></div>{isStalePending && <div><span className={badgeClass("slate")}>Stale Pending</span></div>}{o.financeStatus === "stale_cancelled" && <div className="text-slate-600">Unpaid Razorpay order cancelled because a successful paid order already exists.</div>}{isStalePending && <div className="text-slate-600">This order is unpaid and older than {STALE_PENDING_MINUTES} minutes. It may be safely cancelled if no payment was completed.</div>}{o.financeStatus === "real_failed_payment" && <div className="text-red-600">{o.failure_reason || "Payment failed or verification failed."}</div>}</td><td className="p-2"><div>{o.razorpay_order_id || "-"}</div><div>{o.razorpay_payment_id || "-"}</div></td><td className="p-2 space-y-2"><Link className="underline block" href={`/admin/finance/property-featured/${o.id}`}>View details</Link>{isStalePending && <form action={cancelStaleAction}><input type="hidden" name="orderId" value={o.id} /><button className="underline text-red-700" type="submit">Cancel stale</button></form>}</td></tr>;
         })}
       </tbody></table>
     </div>
