@@ -243,7 +243,7 @@ export default function FeaturedListingModal({
             if (!verifyResponse.ok || !verifyJson?.ok) throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed.");
             const verifyData = verifyJson as VerifyResponse;
             const status = verifyData.activationStatus ?? verifyData.status;
-            if (status === "scheduled") setSuccessMessage("Payment successful. Your Featured extension has been scheduled after your current active period.");
+            if (status === "scheduled") setSuccessMessage("Payment successful. Your higher Featured plan has been scheduled after your current active period.");
             else if (status === "active") setSuccessMessage("Payment successful. Your listing is now Featured.");
             else setSuccessMessage("Payment received. Your Featured activation is being finalized. Please refresh after a few moments.");
             onVerified(verifyData.activation);
@@ -256,8 +256,25 @@ export default function FeaturedListingModal({
           }
         },
       });
-      razorpay.on("payment.failed", () => {
+      razorpay.on("payment.failed", (failureResponse: unknown) => {
         setError("Payment failed. No amount has been activated for Featured Listing. Please try again.");
+        void (async () => {
+          try {
+            const paymentFailure = failureResponse as { error?: { metadata?: { payment_id?: string; order_id?: string } } };
+            await fetch("/api/property-featured/payment-failure", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                featuredOrderId: createOrderData.featuredOrderId,
+                razorpay_order_id: paymentFailure?.error?.metadata?.order_id ?? createOrderData.razorpayOrderId,
+                razorpay_payment_id: paymentFailure?.error?.metadata?.payment_id ?? null,
+                reason: "Payment failed in Razorpay checkout.",
+              }),
+            });
+          } catch {
+            // best effort only - do not block or crash UI
+          }
+        })();
         setIsCheckoutOpen(false);
         setProcessingPlanKey(null);
       });
@@ -283,7 +300,7 @@ export default function FeaturedListingModal({
         </div>
 
         {!canPromote && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only active or approved properties can be promoted.</p>}
-        {isFeaturedActive && activePlan && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing is already Featured. Lower or same-tier plans are disabled. You can choose a higher plan to upgrade your visibility.</p>}
+        {isFeaturedActive && activePlan && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing is already Featured. Lower or same-tier plans are disabled. You can choose a higher plan to schedule after your current Featured period.</p>}
         {hasScheduledExtension && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing already has a scheduled Featured extension. Please review your active plan before purchasing another upgrade.</p>}
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
         {successMessage && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMessage}</p>}
@@ -302,7 +319,7 @@ export default function FeaturedListingModal({
                   {plan.badge && <span className="badge-secondary">{plan.badge}</span>}
                   {plan.is_popular && <span className="badge-success">Most Popular</span>}
                   {plan.is_best_value && <span className="badge-warning">Best Value</span>}
-                  {isFeaturedActive && activePlan && !isPlanDisabled && <span className="badge-secondary">Upgrade Available</span>}
+                  {isFeaturedActive && activePlan && !isPlanDisabled && <span className="badge-secondary">Schedule Higher Plan</span>}
                 </div>
                 <h3 className="text-lg font-semibold">{plan.name}</h3>
                 <p className="text-sm text-muted">{plan.duration_days} days visibility</p>
@@ -316,7 +333,7 @@ export default function FeaturedListingModal({
                     {plan.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}
                   </ul>
                 )}
-                {isPlanDisabled && <p className="text-xs text-muted">You already have an active Featured plan. Choose a higher plan to upgrade/extend visibility.</p>}
+                {isPlanDisabled && <p className="text-xs text-muted">You already have an active Featured plan. Choose a higher plan to schedule after it ends.</p>}
                 <Button
                   className="w-full"
                   disabled={!canPromote || isPlanDisabled || Boolean(processingPlanKey) || isCheckoutOpen || isVerifying}
@@ -328,7 +345,9 @@ export default function FeaturedListingModal({
                       ? "Current Active Plan"
                       : disabledReason === "lower"
                         ? "Lower Than Active Plan"
-                        : "Select & Pay"}
+                        : isFeaturedActive && activePlan
+                          ? "Schedule & Pay"
+                          : "Select & Pay"}
                 </Button>
               </Card>
             );

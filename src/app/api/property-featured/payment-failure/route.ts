@@ -18,18 +18,32 @@ export async function POST(req: Request) {
 
     const { data: order } = await supabaseAdmin
       .from("property_featured_orders")
-      .select("id, owner_id, property_id, plan_id, plan_name, amount_paise, currency, razorpay_order_id, razorpay_payment_id, payment_status")
+      .select("id, owner_id, property_id, plan_id, plan_name, amount_paise, currency, razorpay_order_id, razorpay_payment_id, payment_status, activation_status")
       .eq("id", body.featuredOrderId)
       .eq("owner_id", appUser.id)
       .maybeSingle();
 
     if (!order) return NextResponse.json({ ok: false, error: "Order not found" }, { status: 404 });
 
+    if (body.razorpay_order_id && order.razorpay_order_id && body.razorpay_order_id !== order.razorpay_order_id) {
+      return NextResponse.json({ ok: false, error: "Razorpay order mismatch" }, { status: 400 });
+    }
+
+    const paymentStatus = String(order.payment_status ?? "").toLowerCase();
+    const activationStatus = String(order.activation_status ?? "").toLowerCase();
+    const alreadyFinalized = ["paid", "success", "captured"].includes(paymentStatus)
+      || ["active", "scheduled"].includes(activationStatus);
+
+    if (alreadyFinalized) {
+      return NextResponse.json({ ok: true, status: activationStatus || "paid" });
+    }
+
     await supabaseAdmin
       .from("property_featured_orders")
       .update({ payment_status: "failed", activation_status: "failed", failure_reason: body.reason || "Payment failed in checkout", failed_at: new Date().toISOString() })
       .eq("id", order.id)
-      .neq("payment_status", "paid");
+      .in("payment_status", ["pending", "created", "unpaid", "failed", "payment_failed"])
+      .not("activation_status", "in", "(active,scheduled)");
 
     void notifyFeaturedPaymentEvent({
       supabaseAdmin,
