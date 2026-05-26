@@ -124,6 +124,7 @@ export default function FeaturedListingModal({
   const [processingPlanKey, setProcessingPlanKey] = useState<string | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isRefreshingListing, setIsRefreshingListing] = useState(false);
 
   const sortedPlans = useMemo(() => [...plans].sort((a, b) => a.sort_order - b.sort_order), [plans]);
   const activePlan = useMemo(() => {
@@ -145,7 +146,6 @@ export default function FeaturedListingModal({
     async function fetchPlans() {
       setLoadingPlans(true);
       setError(null);
-      setSuccessMessage(null);
       try {
         const response = await fetch("/api/property-featured/plans");
         const result = await response.json();
@@ -171,6 +171,7 @@ export default function FeaturedListingModal({
     setError(null);
     setSuccessMessage(null);
     try {
+      console.log("[featured-modal] create order started", { propertyId, planId: plan.id, planKey: plan.plan_key });
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded || !window.Razorpay) throw new Error("Unable to load payment gateway. Please try again.");
 
@@ -181,7 +182,7 @@ export default function FeaturedListingModal({
       });
       const createOrderJson = (await createOrderResponse.json()) as CreateOrderResponse | ApiErrorResponse;
       if (!createOrderResponse.ok || !createOrderJson?.ok) {
-        throw new Error(getApiErrorMessage(createOrderJson) || "Unable to create payment order.");
+        throw new Error(getApiErrorMessage(createOrderJson) || "Could not start payment. Please try again.");
       }
       const createOrderData = createOrderJson as CreateOrderResponse;
       const checkoutKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
@@ -204,7 +205,8 @@ export default function FeaturedListingModal({
         notes: { featured_order_id: createOrderData.featuredOrderId },
         modal: {
           ondismiss: () => {
-            setError("Payment was cancelled. Your listing was not activated.");
+            console.log("[featured-modal] payment cancelled", { featuredOrderId: createOrderData.featuredOrderId });
+            setError("Payment was cancelled. No amount has been charged if payment was not completed.");
             void (async () => {
               try {
                 await fetch("/api/property-featured/payment-cancelled", {
@@ -226,6 +228,8 @@ export default function FeaturedListingModal({
         },
         handler: async (paymentResponse: RazorpayHandlerResponse) => {
           setIsVerifying(true);
+          setError(null);
+          setSuccessMessage("Verifying payment...");
           try {
             const verifyResponse = await fetch("/api/property-featured/verify", {
               method: "POST",
@@ -243,13 +247,29 @@ export default function FeaturedListingModal({
             if (!verifyResponse.ok || !verifyJson?.ok) throw new Error(getApiErrorMessage(verifyJson) || "Payment verification failed.");
             const verifyData = verifyJson as VerifyResponse;
             const status = verifyData.activationStatus ?? verifyData.status;
+            console.log("[featured-modal] payment verify success", { featuredOrderId: createOrderData.featuredOrderId, status });
+            setIsRefreshingListing(true);
+            setSuccessMessage("Updating your listing...");
             await Promise.resolve(onVerified(verifyData.activation));
-            if (status === "scheduled") setSuccessMessage("Payment successful. Your higher featured plan has been scheduled after your current featured period.");
-            else if (status === "active") setSuccessMessage("Payment successful. Your property is now featured.");
-            else setSuccessMessage("Payment received. Your Featured activation is being finalized. Please refresh after a few moments.");
+            if (status === "scheduled") {
+              setSuccessMessage("Payment successful. Your featured plan has been scheduled after your current featured period.");
+              console.log("[featured-modal] payment scheduled success message shown", { featuredOrderId: createOrderData.featuredOrderId });
+            } else if (status === "active") {
+              setSuccessMessage("Payment successful. Your property is now featured.");
+              console.log("[featured-modal] payment active success message shown", { featuredOrderId: createOrderData.featuredOrderId });
+            } else {
+              setSuccessMessage("Payment successful. Your featured listing status is being updated. Please refresh in a moment.");
+            }
           } catch (verifyErr) {
-            setError(verifyErr instanceof Error ? verifyErr.message : "Payment verification failed.");
+            console.log("[featured-modal] payment verify failed", verifyErr);
+            setSuccessMessage(null);
+            setError(
+              verifyErr instanceof Error && verifyErr.message
+                ? verifyErr.message
+                : "Payment verification failed. If money was deducted, please contact support with your payment reference.",
+            );
           } finally {
+            setIsRefreshingListing(false);
             setIsVerifying(false);
             setIsCheckoutOpen(false);
             setProcessingPlanKey(null);
@@ -279,9 +299,10 @@ export default function FeaturedListingModal({
         setProcessingPlanKey(null);
       });
       setIsCheckoutOpen(true);
+      console.log("[featured-modal] razorpay opened", { featuredOrderId: createOrderData.featuredOrderId, razorpayOrderId: createOrderData.razorpayOrderId });
       razorpay.open();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong during checkout.");
+      setError(err instanceof Error ? err.message : "Could not start payment. Please try again.");
       setProcessingPlanKey(null);
     }
   }
@@ -302,8 +323,8 @@ export default function FeaturedListingModal({
         {!canPromote && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only active or approved properties can be promoted.</p>}
         {isFeaturedActive && activePlan && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing is already Featured. Lower or same-tier plans are disabled. You can choose a higher plan to schedule after your current Featured period.</p>}
         {hasScheduledExtension && <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">Your listing already has a scheduled Featured extension. Please review your active plan before purchasing another upgrade.</p>}
-        {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
-        {successMessage && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMessage}</p>}
+        {error && <p className="text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        {successMessage && <p className="text-sm font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMessage}</p>}
         {loadingPlans && <p className="text-muted">Loading featured plans...</p>}
         {!loadingPlans && sortedPlans.length === 0 && !error && <p className="text-muted">No plans available right now.</p>}
 
@@ -340,7 +361,9 @@ export default function FeaturedListingModal({
                   onClick={() => handlePlanPurchase(plan)}
                 >
                   {processingPlanKey === plan.plan_key || isCheckoutOpen || isVerifying
-                    ? "Processing..."
+                    ? isRefreshingListing || isVerifying
+                      ? "Verifying payment..."
+                      : "Processing..."
                     : disabledReason === "current"
                       ? "Current Active Plan"
                       : disabledReason === "lower"
