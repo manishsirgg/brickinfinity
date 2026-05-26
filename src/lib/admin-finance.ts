@@ -19,6 +19,8 @@ export type FeaturedOrder = {
   created_at: string;
   updated_at?: string | null;
   paid_at?: string | null;
+  featured_starts_at?: string | null;
+  featured_ends_at?: string | null;
   owner_id?: string | null;
   property_id?: string | null;
   plan_id?: string | null;
@@ -40,7 +42,7 @@ export async function fetchFeaturedOrders() {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("property_featured_orders")
-    .select(`id,created_at,updated_at,paid_at,owner_id,property_id,plan_id,plan_name,duration_days,amount_paise,currency,payment_status,activation_status,razorpay_order_id,razorpay_payment_id,failure_reason,metadata,users:owner_id(id,full_name,email,phone,whatsapp_number),properties:property_id(id,title,status,is_featured,featured_until)`)
+    .select(`id,created_at,updated_at,paid_at,featured_starts_at,featured_ends_at,owner_id,property_id,plan_id,plan_name,duration_days,amount_paise,currency,payment_status,activation_status,razorpay_order_id,razorpay_payment_id,failure_reason,metadata,users:owner_id(id,full_name,email,phone,whatsapp_number),properties:property_id(id,title,status,is_featured,featured_until)`)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
