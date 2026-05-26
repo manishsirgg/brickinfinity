@@ -9,7 +9,10 @@ export default async function HomePage() {
 
   const supabase = createServiceClient();
 
-  async function fetchHomeProperties(orderBy: "views_count" | "created_at") {
+  async function fetchHomeProperties(
+    orderBy: "views_count" | "created_at",
+    listingType?: "Sale" | "Rent"
+  ) {
     const baseSelect = `
       id,
       slug,
@@ -32,7 +35,7 @@ export default async function HomePage() {
       property_images(image_url)
     `;
 
-    const richQuery = supabase
+    let richQuery = supabase
       .from("properties")
       .select(baseSelect)
       .eq("status", "active")
@@ -40,13 +43,14 @@ export default async function HomePage() {
       .is("deleted_at", null)
       .order(orderBy, { ascending: false })
       .limit(4);
+    if (listingType) richQuery = richQuery.eq("listing_type", listingType);
 
     const { data, error } = await richQuery;
     if (!error) return data;
 
     console.error(`Home ${orderBy} query error:`, error);
 
-    const { data: fallback, error: fallbackError } = await supabase
+    let fallbackQuery = supabase
       .from("properties")
       .select(`
         id,
@@ -71,6 +75,8 @@ export default async function HomePage() {
       .is("deleted_at", null)
       .order(orderBy, { ascending: false })
       .limit(4);
+    if (listingType) fallbackQuery = fallbackQuery.eq("listing_type", listingType);
+    const { data: fallback, error: fallbackError } = await fallbackQuery;
 
     if (fallbackError) {
       console.error(`Home ${orderBy} fallback error:`, fallbackError);
@@ -103,6 +109,9 @@ export default async function HomePage() {
   /* ================= LATEST ================= */
 
   const latest = await fetchHomeProperties("created_at");
+
+  const buyPreview = await fetchHomeProperties("created_at", "Sale");
+  const rentPreview = await fetchHomeProperties("created_at", "Rent");
 
   return (
     <main className="bg-[#F7F8FA]">
@@ -160,7 +169,7 @@ export default async function HomePage() {
             <SectionHeader
               title="Featured Properties"
               subtitle="Promoted listings getting higher visibility on Brick Infinity."
-              href="/buy"
+              href="/properties/featured"
               linkText="View All →"
             />
 
@@ -178,7 +187,7 @@ export default async function HomePage() {
           <SectionHeader
             title="Latest Listings"
             subtitle="Recently added verified homes."
-            href="/buy"
+            href="/properties/latest"
             linkText="Browse More →"
           />
 
@@ -187,7 +196,42 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* TRUST */}
+
+      {/* BUY */}
+
+      <section className="bg-white border-t py-20">
+        <div className="max-w-7xl mx-auto px-6">
+
+          <SectionHeader
+            title="Buy Properties"
+            subtitle="Explore verified sale listings ready for purchase."
+            href="/properties/buy"
+            linkText="Browse More →"
+          />
+
+          <PropertyGrid properties={buyPreview} />
+
+        </div>
+      </section>
+
+      {/* RENT */}
+
+      <section className="py-20 border-t">
+        <div className="max-w-7xl mx-auto px-6">
+
+          <SectionHeader
+            title="Rent Properties"
+            subtitle="Discover verified rentals across supported locations."
+            href="/properties/rent"
+            linkText="Browse More →"
+          />
+
+          <PropertyGrid properties={rentPreview} />
+
+        </div>
+      </section>
+
+            {/* TRUST */}
 
       <section className="bg-white border-t py-20">
         <div className="max-w-6xl mx-auto px-6 text-center">
