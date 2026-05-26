@@ -47,7 +47,7 @@ export default function Footer() {
           {/* ===== Explore ===== */}
           <div>
             <h3 className="text-base font-semibold mb-6 relative inline-block">
-              Explore
+              Footer Menu
               <span className="absolute left-0 -bottom-2 w-8 h-[2px] bg-red-400"></span>
             </h3>
 
