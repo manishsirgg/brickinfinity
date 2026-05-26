@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { classifyFinanceStatus, fetchFeaturedOrders, isStalePendingOrder, STALE_PENDING_MINUTES } from "@/lib/admin-finance";
+import CancelStaleOrderButton from "@/components/admin/CancelStaleOrderButton";
 
 export default async function OrderDetail({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
@@ -11,13 +11,6 @@ export default async function OrderDetail({ params }: { params: Promise<{ orderI
 
   const financeStatus = classifyFinanceStatus(order);
   const isStalePending = isStalePendingOrder(order);
-
-  async function cancelStaleAction() {
-    "use server";
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/admin/finance/property-featured/orders/${orderId}/cancel-stale`, { method: "POST", cache: "no-store" });
-    if (!response.ok) redirect(`/admin/finance/property-featured/${orderId}?error=cancel_stale_failed`);
-    redirect("/admin/finance?success=stale_cancelled");
-  }
 
   return <div className="max-w-5xl mx-auto p-8 space-y-6 text-sm">
     <div className="flex justify-between"><h1 className="text-2xl font-semibold">Featured Payment Detail</h1><Link href="/admin/finance" className="underline">Back</Link></div>
@@ -30,6 +23,6 @@ export default async function OrderDetail({ params }: { params: Promise<{ orderI
     <section className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-semibold">Seller Details</h2><div>ID: {order.users?.id || order.owner_id || "-"}</div><div>Name: {order.users?.full_name || "-"}</div><div>Email: {order.users?.email || "-"}</div><div>Phone: {order.users?.phone || "-"}</div><div>WhatsApp: {order.users?.whatsapp_number || "-"}</div></section>
     <section className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-semibold">Property Details</h2><div>ID: {order.properties?.id || order.property_id || "-"}</div><div>Title: {order.properties?.title || "-"}</div><div>Status: {order.properties?.status || "-"}</div><div>Featured now: {String(order.properties?.is_featured ?? "-")}</div><div>Featured until: {order.properties?.featured_until || "-"}</div></section>
     <section className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-semibold">Plan Details</h2><div>Plan id: {order.plan_id || "-"}</div><div>Plan name: {order.plan_name || "-"}</div><div>Duration: {order.duration_days || "-"} days</div><div>Amount: {(order.amount_paise/100).toFixed(2)} {order.currency || "INR"}</div></section>
-    <div className="flex gap-4 items-center"><Link href="/admin/property-featured/reconciliation" className="underline">Open Reconciliation</Link>{isStalePending && <form action={cancelStaleAction}><button type="submit" className="px-3 py-2 rounded bg-red-600 text-white">Cancel stale pending order</button></form>}</div>
+    <div className="flex gap-4 items-center"><Link href="/admin/property-featured/reconciliation" className="underline">Open Reconciliation</Link>{isStalePending && <CancelStaleOrderButton orderId={orderId} className="px-3 py-2 rounded bg-red-600 text-white disabled:opacity-50" successRedirect="/admin/finance?success=stale_cancelled" label="Cancel stale pending order" />}</div>
   </div>;
 }

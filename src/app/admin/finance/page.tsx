@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { classifyFinanceStatus, fetchFeaturedOrders, isPaid, isStalePendingOrder, STALE_PENDING_MINUTES } from "@/lib/admin-finance";
+import CancelStaleOrderButton from "@/components/admin/CancelStaleOrderButton";
 
 const pageSize = 15;
 
@@ -20,15 +20,6 @@ function badgeClass(kind: "green" | "red" | "yellow" | "slate" | "blue") {
 }
 
 export default async function AdminFinancePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  async function cancelStaleAction(formData: FormData) {
-    "use server";
-    const orderId = String(formData.get("orderId") ?? "");
-    if (!orderId) redirect("/admin/finance?error=missing_order_id");
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/admin/finance/property-featured/orders/${orderId}/cancel-stale`, { method: "POST", cache: "no-store" });
-    if (!response.ok) redirect("/admin/finance?error=cancel_stale_failed");
-    redirect("/admin/finance?success=stale_cancelled");
-  }
-
   const params = await searchParams;
   const search = String(params.q ?? "").toLowerCase();
   const pay = String(params.payment ?? "all").toLowerCase();
@@ -108,7 +99,7 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
             : o.financeStatus === "cancelled_by_user" ? ["Cancelled by User", "slate"] as const
             : ["Needs Review", "red"] as const;
 
-          return <tr key={o.id} className="border-b align-top"><td className="p-2">{new Date(o.created_at).toLocaleString()}<div className="text-gray-500">Paid: {o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</div></td><td className="p-2">{o.users?.full_name || "-"}<div>{o.users?.email || "-"}</div><div>{o.users?.phone || "-"}</div></td><td className="p-2">{o.properties?.title || "-"}<div className="text-gray-500">{o.property_id || "-"}</div></td><td className="p-2">{o.plan_name || "-"}</td><td className="p-2">{formatInr(o.amount_paise)}<div>{o.currency || "INR"}</div></td><td className="p-2 space-y-1"><div className={badgeClass(paymentBadge[1])}>{paymentBadge[0]}</div><div><span className={badgeClass(activationBadge[1])}>{activationBadge[0]}</span></div>{isStalePending && <div><span className={badgeClass("slate")}>Stale Pending</span></div>}{o.financeStatus === "stale_cancelled" && <div className="text-slate-600">Unpaid Razorpay order cancelled because a successful paid order already exists.</div>}{isStalePending && <div className="text-slate-600">This order is unpaid and older than {STALE_PENDING_MINUTES} minutes. It may be safely cancelled if no payment was completed.</div>}{o.financeStatus === "real_failed_payment" && <div className="text-red-600">{o.failure_reason || "Payment failed or verification failed."}</div>}</td><td className="p-2"><div>{o.razorpay_order_id || "-"}</div><div>{o.razorpay_payment_id || "-"}</div></td><td className="p-2 space-y-2"><Link className="underline block" href={`/admin/finance/property-featured/${o.id}`}>View details</Link>{isStalePending && <form action={cancelStaleAction}><input type="hidden" name="orderId" value={o.id} /><button className="underline text-red-700" type="submit">Cancel stale</button></form>}</td></tr>;
+          return <tr key={o.id} className="border-b align-top"><td className="p-2">{new Date(o.created_at).toLocaleString()}<div className="text-gray-500">Paid: {o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</div></td><td className="p-2">{o.users?.full_name || "-"}<div>{o.users?.email || "-"}</div><div>{o.users?.phone || "-"}</div></td><td className="p-2">{o.properties?.title || "-"}<div className="text-gray-500">{o.property_id || "-"}</div></td><td className="p-2">{o.plan_name || "-"}</td><td className="p-2">{formatInr(o.amount_paise)}<div>{o.currency || "INR"}</div></td><td className="p-2 space-y-1"><div className={badgeClass(paymentBadge[1])}>{paymentBadge[0]}</div><div><span className={badgeClass(activationBadge[1])}>{activationBadge[0]}</span></div>{isStalePending && <div><span className={badgeClass("slate")}>Stale Pending</span></div>}{o.financeStatus === "stale_cancelled" && <div className="text-slate-600">Unpaid Razorpay order cancelled because a successful paid order already exists.</div>}{isStalePending && <div className="text-slate-600">This order is unpaid and older than {STALE_PENDING_MINUTES} minutes. It may be safely cancelled if no payment was completed.</div>}{o.financeStatus === "real_failed_payment" && <div className="text-red-600">{o.failure_reason || "Payment failed or verification failed."}</div>}</td><td className="p-2"><div>{o.razorpay_order_id || "-"}</div><div>{o.razorpay_payment_id || "-"}</div></td><td className="p-2 space-y-2"><Link className="underline block" href={`/admin/finance/property-featured/${o.id}`}>View details</Link>{isStalePending && <CancelStaleOrderButton orderId={o.id} className="underline text-red-700 disabled:opacity-50" successRedirect="/admin/finance?success=stale_cancelled" />}</td></tr>;
         })}
       </tbody></table>
     </div>
