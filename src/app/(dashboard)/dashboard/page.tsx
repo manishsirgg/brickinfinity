@@ -234,6 +234,16 @@ export default async function DashboardHome() {
           {/* ANALYTICS */}
 
           {isSeller && (
+            <Link
+              href="/seller/crm"
+              className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition"
+            >
+              <h3 className="font-semibold text-gray-800">CRM</h3>
+              <p className="text-sm text-gray-500 mt-2">Manage contacts, deals, follow-ups, and activity.</p>
+            </Link>
+          )}
+
+          {isSeller && (
 
             <Link
               href="/dashboard/analytics"
