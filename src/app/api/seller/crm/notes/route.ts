@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
     if (!ctx.ok) return NextResponse.json({ ok: false, error: ctx.error, details: ctx.details }, { status: ctx.status });
     const b = await req.json();
     const { seller_id, created_by, updated_by, ...payload } = b ?? {};
-    if (!payload.body?.trim()) return NextResponse.json({ ok: false, error: "body is required" }, { status: 400 });
-    if (!payload.contact_id && !payload.deal_id && !payload.property_id) return NextResponse.json({ ok: false, error: "At least one context id is required" }, { status: 400 });
+    if (!payload.body?.trim()) return NextResponse.json({ ok: false, error: "Note content is required." }, { status: 400 });
+    if (!payload.contact_id && !payload.deal_id && !payload.property_id) return NextResponse.json({ ok: false, error: "Please link this note to a contact, deal, or property." }, { status: 400 });
     if (payload.contact_id) await assertOwnership(ctx, "seller_crm_contacts", payload.contact_id, "contact_id");
     if (payload.deal_id) await assertOwnership(ctx, "seller_crm_deals", payload.deal_id, "deal_id");
     if (payload.property_id) await assertOwnership(ctx, "properties", payload.property_id, "property_id");
