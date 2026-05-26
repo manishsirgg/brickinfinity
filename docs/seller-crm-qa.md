@@ -1,40 +1,50 @@
-# Seller CRM QA Checklist
+# Seller CRM QA – Production Readiness Pass (2026-05-26)
 
-## API routes
-- ✅ `/api/seller/crm/summary`
-- ✅ `/api/seller/crm/contacts` and `/api/seller/crm/contacts/:id`
-- ✅ `/api/seller/crm/deals` and `/api/seller/crm/deals/:id`
-- ✅ `/api/seller/crm/followups` and `/api/seller/crm/followups/:id`
-- ✅ `/api/seller/crm/notes` and `/api/seller/crm/notes/:id`
-- ✅ `/api/seller/crm/contact-options`
-- ✅ `/api/seller/crm/property-options`
-- ✅ `/api/seller/crm/activities`
-- ✅ `/api/seller/crm/settings`
+## What was tested
+- Code-level QA across CRM API routes and CRM UI page wiring.
+- Local static checks: lint and production build.
+- Manual browser QA was **not completed in this environment** (no authenticated interactive browser session).
 
-## Key actions
-- ✅ Create/edit/archive/restore contact
-- ✅ Mark contact converted/lost
-- ✅ Create/edit deal and move stage to closed_won/closed_lost
-- ✅ Create follow-up and complete/cancel/reschedule
-- ✅ Add/edit/delete notes
-- ✅ Check overview cards and activities timeline
-- ✅ Save settings
+## Passed checks
+- Seller scoping is server-derived through `resolveSellerCrmContext` in all CRM routes.
+- No `public.profiles`/`seller_profile_id` usage in CRM route tree.
+- No API accepts trusted `seller_id` from client payloads for persistence.
+- Deal close stage transitions now support `closed_at` persistence in PATCH allowlist.
 
-## Manual testing steps
-1. Notes: create note from contact and deal detail tabs, edit it, delete it, verify timeline item appears.
-2. Options dropdowns: verify contact and property options endpoints return only seller-scoped records.
-3. Restore: archive contact, then restore it, verify `is_archived` toggles and contact reappears.
-4. Deal won/lost: update a deal stage to `closed_won` then `closed_lost` and verify stage-change activity.
-5. Follow-up actions: create follow-up, complete, cancel, and reschedule with new due date.
-6. Security direct URL checks: try accessing another seller's contact/deal/note/followup id directly; confirm not found/forbidden.
+## Bugs fixed
+1. **CRM list pages had incomplete rendering paths**
+   - Contacts/deals/follow-ups pages lacked robust loading/error/empty handling and basic seller-usable rendering.
+   - Added explicit loading/error states and human-readable list rendering for all primary list pages.
+2. **Detail page quick actions had safety gaps**
+   - Added defensive unavailable states for missing call/email/WhatsApp actions.
+   - Added Indian WhatsApp normalization for 10-digit local numbers (`91` prefix).
+3. **Settings UX blockers**
+   - Switched to controlled draft state + explicit save button (instead of onBlur-only writes).
+   - Save button disables while request is in flight.
+4. **Contact validation gaps**
+   - Added readable invalid-email validation for create/update.
+   - Added budget min/max validation for update path too.
+   - Added duplicate error normalization for update path.
+5. **Deal close metadata bug**
+   - Added `closed_at` to deal PATCH allowlist so won/lost stage changes can persist close timestamp.
 
-## Security checks
-- No client-provided seller_id accepted
-- All queries scoped by seller_id
-- No use of public.profiles/seller_profile_id
+## What remains unverified here
+- Full browser-authenticated interaction flows:
+  - create/edit/archive/restore contact via actual forms
+  - deal pipeline drag/stage movement UX
+  - follow-up transition visual refresh in a live signed-in session
+  - activity filter control UX behavior in browser
+- Mobile viewport visual QA screenshots.
 
-## Regression checks
-- Property flows still load
-- Featured listing/payment pages still build
-- Admin pages still build
-- Auth login flow still builds
+## Suggested production smoke test (post-deploy)
+1. Log in as a seller and open all CRM pages:
+   `/seller/crm`, `/contacts`, `/contacts/:id`, `/deals`, `/deals/:id`, `/followups`, `/activities`, `/settings`.
+2. Execute one end-to-end contact journey:
+   create → edit → archive → restore → convert/lost.
+3. Execute one deal journey:
+   create deal → move stage → mark won/lost and confirm `closed_at` reflected.
+4. Execute follow-up transitions:
+   create scheduled follow-up → complete → cancel → reschedule.
+5. Create/edit/delete notes on both contact and deal detail pages.
+6. Apply activity filters by `activity_type`, `channel`, `contact_id`, `deal_id`, `property_id` and confirm scoped results.
+7. Save CRM settings and verify values persist on refresh.
