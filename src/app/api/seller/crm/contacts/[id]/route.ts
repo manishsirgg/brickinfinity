@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: false, error: "Please enter a valid email address" }, { status: 400 });
     }
     if (safeBody.budget_min != null && safeBody.budget_max != null && Number(safeBody.budget_min) > Number(safeBody.budget_max)) {
-      return NextResponse.json({ ok: false, error: "budget_min must be <= budget_max" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Minimum budget cannot be greater than maximum budget." }, { status: 400 });
     }
     if (safeBody.is_archived === true && !safeBody.archived_at) safeBody.archived_at = new Date().toISOString();
     if (safeBody.is_archived === false) safeBody.archived_at = null;
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .maybeSingle();
 
     if (error) {
-      const friendly = error.message.includes("duplicate") ? "Contact with same phone/email already exists" : error.message;
+      const friendly = error.message.includes("duplicate") ? "This phone number or email already exists in your CRM." : error.message;
       return NextResponse.json({ ok: false, error: friendly }, { status: 400 });
     }
     if (!data) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });

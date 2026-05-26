@@ -48,3 +48,33 @@
 5. Create/edit/delete notes on both contact and deal detail pages.
 6. Apply activity filters by `activity_type`, `channel`, `contact_id`, `deal_id`, `property_id` and confirm scoped results.
 7. Save CRM settings and verify values persist on refresh.
+
+## Production Smoke Test — Vercel
+
+### Checklist
+1. Login as seller.
+2. Open CRM overview.
+3. Create contact.
+4. Edit contact.
+5. Archive/restore contact.
+6. Add note.
+7. Add follow-up.
+8. Complete follow-up.
+9. Create deal.
+10. Move deal stage.
+11. Mark deal won.
+12. Open activities.
+13. Save settings.
+14. Logout/login again and verify persisted data.
+15. Confirm another seller cannot access record by direct URL.
+16. Confirm property listing and featured payment pages still work.
+
+### Expected environment variables
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-side API access where applicable)
+- Any existing production auth variables already required by the app (for example NextAuth/JWT secrets if configured in this project).
+
+### Known non-blocking build warnings
+- No CRM-specific non-blocking warnings observed in this pass.
+- If non-CRM framework/package warnings appear in CI, treat separately unless they block deploy.
