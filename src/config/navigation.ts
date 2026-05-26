@@ -9,12 +9,12 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   {
     label: "Buy",
-    href: "/buy",
+    href: "https://www.brickinfinity.com/properties/buy",
     roles: [USER_ROLES.BUYER, USER_ROLES.SELLER, USER_ROLES.ADMIN],
   },
   {
     label: "Rent",
-    href: "/rent",
+    href: "https://www.brickinfinity.com/properties/rent",
     roles: [USER_ROLES.BUYER, USER_ROLES.SELLER, USER_ROLES.ADMIN],
   },
   {
