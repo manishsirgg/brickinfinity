@@ -156,7 +156,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
         {/* LEFT */}
         <div className="flex items-center gap-8">
           <Link href="/" className="flex h-14 shrink-0 items-center overflow-hidden">
@@ -185,7 +185,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
         </div>
 
         {/* CENTER SEARCH */}
-        <div className="hidden md:flex flex-1 justify-center px-8">
+        <div className="hidden lg:flex flex-1 justify-center px-4 min-w-0">
           <NavbarSearch />
         </div>
 
@@ -396,7 +396,8 @@ export default function NavbarClient({ user }: NavbarClientProps) {
           mobileOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="p-6 space-y-6 text-sm font-medium">
+        <div className="p-6 space-y-6 text-sm font-medium overflow-y-auto h-full">
+          <NavbarSearch />
           {user && role !== USER_ROLES.ADMIN && (
             <Link
               href="/property/dashboard/saved-properties"

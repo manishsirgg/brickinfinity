@@ -22,6 +22,7 @@ export default function HeroSearch() {
   const [stateId, setStateId] = useState("");
   const [cityId, setCityId] = useState("");
 
+  const [keyword, setKeyword] = useState("");
   const [propertyType, setPropertyType] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -73,6 +74,7 @@ export default function HeroSearch() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const q = keyword.replace(/\s+/g, " ").trim();
     const min = minPrice.trim();
     const max = maxPrice.trim();
 
@@ -88,13 +90,14 @@ export default function HeroSearch() {
 
     if (selectedStateName) params.set("state", selectedStateName);
     if (selectedCityName) params.set("city", selectedCityName);
+    if (q) params.set("search", q);
     if (propertyType) params.set("propertyType", propertyType);
     if (min) params.set("minPrice", min);
     if (max) params.set("maxPrice", max);
     if (bedrooms) params.set("bedrooms", bedrooms);
 
-    const basePath = listingType === "Sale" ? "/buy" : "/rent";
-    const url = params.toString() ? `${basePath}?${params.toString()}` : basePath;
+    params.set("listingType", listingType);
+    const url = params.toString() ? `/properties?${params.toString()}` : "/properties";
 
     router.push(url);
   };
@@ -141,6 +144,14 @@ export default function HeroSearch() {
       <div className="border-t" />
 
       <div className="grid md:grid-cols-3 gap-4">
+
+      <input
+        type="text"
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
+        placeholder="Search by city, location, property type, or keyword"
+        className="input md:col-span-3"
+      />
         <select
           value={stateId}
           onChange={(e) => {
