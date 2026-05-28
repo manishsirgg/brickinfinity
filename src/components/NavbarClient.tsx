@@ -88,14 +88,14 @@ export default function NavbarClient({ user }: NavbarClientProps) {
         {/* LEFT */}
         <div className="flex items-center gap-8">
 
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex h-14 shrink-0 items-center overflow-hidden">
             <Image
               src="/logo.png"
               alt="BrickInfinity"
               width={140}
-              height={40}
+              height={48}
               priority
-              className="h-10 w-auto object-contain"
+              className="h-9 w-auto max-h-9 object-contain sm:h-10 sm:max-h-10"
             />
           </Link>
 
