@@ -13,9 +13,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const b = await req.json();
     const patch: any = Object.fromEntries(Object.entries(b ?? {}).filter(([k]) => allow.includes(k)));
-    if (patch.status === "completed" && !patch.completed_at) patch.completed_at = new Date().toISOString();
-    if (patch.status === "cancelled" && !patch.cancelled_at) patch.cancelled_at = new Date().toISOString();
-    if (patch.status === "missed" && !patch.missed_at) patch.missed_at = new Date().toISOString();
+    if (patch.status === "completed") {
+      if (!patch.completed_at) patch.completed_at = new Date().toISOString();
+      patch.cancelled_at = null;
+      patch.missed_at = null;
+    }
+    if (patch.status === "cancelled") {
+      if (!patch.cancelled_at) patch.cancelled_at = new Date().toISOString();
+      patch.completed_at = null;
+      patch.missed_at = null;
+    }
+    if (patch.status === "missed") {
+      if (!patch.missed_at) patch.missed_at = new Date().toISOString();
+      patch.completed_at = null;
+      patch.cancelled_at = null;
+    }
 
     const { data, error } = await c.supabase
       .from("seller_crm_followups")
