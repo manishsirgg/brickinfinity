@@ -6,11 +6,7 @@ export default function Card({
 }: any) {
   return (
     <div
-      className={`bg-[var(--color-surface)] 
-                  rounded-[var(--radius-lg)] 
-                  shadow-[var(--shadow-soft)] 
-                  p-6 
-                  ${className}`}
+      className={`bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-[var(--shadow-soft)] p-4 md:p-6 ${className}`}
     >
       {children}
     </div>
