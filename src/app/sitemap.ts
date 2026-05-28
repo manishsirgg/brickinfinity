@@ -39,13 +39,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
-      url: `${baseUrl}/buy`,
+      url: `${baseUrl}/properties/buy`,
       lastModified: new Date(),
       changeFrequency: "daily",
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/rent`,
+      url: `${baseUrl}/properties/rent`,
       lastModified: new Date(),
       changeFrequency: "daily",
       priority: 0.9,

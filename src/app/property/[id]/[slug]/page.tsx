@@ -269,7 +269,7 @@ This property is not yet live. Only you can see this preview.
 
 {state && (
 <>
-<a href={`/buy?state=${encodeURIComponent(state)}`} className="hover:underline">
+<a href={`/properties/buy?state=${encodeURIComponent(state)}`} className="hover:underline">
 {state}
 </a>
 <span className="mx-2">›</span>
@@ -278,7 +278,7 @@ This property is not yet live. Only you can see this preview.
 
 {city && (
 <>
-<a href={`/buy?city=${encodeURIComponent(city)}`} className="hover:underline">
+<a href={`/properties/buy?city=${encodeURIComponent(city)}`} className="hover:underline">
 {city}
 </a>
 <span className="mx-2">›</span>
