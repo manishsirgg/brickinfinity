@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+
+import { createServiceClient } from "@/lib/supabase/service";
+
+type SupabaseErrorShape = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
 
 function normalizePhone(raw?: string | null) {
   if (!raw) return null;
@@ -9,19 +17,37 @@ function normalizePhone(raw?: string | null) {
   return digits || null;
 }
 
-function normalizeIndianWhatsApp(raw?: string | null) {
-  const phone = normalizePhone(raw);
+function normalizePhoneForWhatsApp(phone?: string | null) {
   if (!phone) return null;
-  return `91${phone}`;
+  const cleaned = phone.replace(/[^\d]/g, "");
+  if (!cleaned) return null;
+  if (cleaned.length === 10) return `91${cleaned}`;
+  if (cleaned.length === 12 && cleaned.startsWith("91")) return cleaned;
+  return cleaned.length >= 10 ? cleaned : null;
+}
+
+function toSupabaseErrorShape(error: unknown): SupabaseErrorShape {
+  if (!error || typeof error !== "object") return {};
+  const maybe = error as SupabaseErrorShape;
+  return {
+    code: maybe.code,
+    message: maybe.message,
+    details: maybe.details,
+    hint: maybe.hint,
+  };
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    console.info("[property-lead] received payload", {
+      property_id: body?.property_id,
+      has_name: Boolean(body?.name),
+      has_phone: Boolean(body?.phone),
+      has_email: Boolean(body?.email),
+    });
 
     const { property_id, name, phone, email, message } = body;
-
-    /* ================= BASIC VALIDATION ================= */
 
     if (!property_id || !name || (!phone && !email)) {
       return NextResponse.json(
@@ -38,14 +64,13 @@ export async function POST(req: Request) {
       );
     }
 
-    /* ================= SERVER SUPABASE CLIENT ================= */
+    const normalizedWhatsAppNumber = normalizePhoneForWhatsApp(phone);
+    const normalizedEmail = typeof email === "string" ? email.trim() : null;
+    const safeMessage = (typeof message === "string" && message.trim())
+      ? message.trim()
+      : "Enquiry received from property detail form";
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    /* ================= VERIFY PROPERTY ================= */
+    const supabase = createServiceClient();
 
     const { data: property, error: propertyError } = await supabase
       .from("properties")
@@ -54,7 +79,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (propertyError) {
-      console.error("[property-lead] property lookup failed", propertyError);
+      console.error("[property-lead] property lookup failed", toSupabaseErrorShape(propertyError));
       return NextResponse.json({ error: "Unable to process enquiry" }, { status: 500 });
     }
 
@@ -86,8 +111,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     const resolvedSellerId = sellerProfile?.id || property.seller_id;
-
-    /* ================= LEAD DEDUPLICATION ================= */
+    console.info("[property-lead] property seller resolved", { property_id, seller_id: resolvedSellerId });
 
     const twelveHoursAgo =
       new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
@@ -101,26 +125,24 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (existingLead) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, crmSync: "skipped" });
     }
 
-    /* ================= INSERT LEAD ================= */
-
-    const { data: insertedLead, error } = await supabase
+    const { error } = await supabase
       .from("leads")
       .insert({
         property_id,
         seller_id: resolvedSellerId,
         buyer_name: name,
         buyer_phone: normalizedPhone,
-        buyer_email: email,
+        buyer_email: normalizedEmail,
         message,
         status: "new",
         contacted: false,
       });
 
     if (error) {
-      console.error("[property-lead] Lead insert error:", error);
+      console.error("[property-lead] Lead insert error", toSupabaseErrorShape(error));
       return NextResponse.json(
         { error: "Failed to create lead" },
         { status: 500 }
@@ -136,101 +158,154 @@ export async function POST(req: Request) {
       .limit(1)
       .maybeSingle();
 
+    console.info("[property-lead] lead created", { lead_id: leadRow?.id || null, property_id, seller_id: resolvedSellerId });
+
+    let crmSync: "completed" | "failed" = "completed";
     try {
-      const contactQuery = supabase
-        .from("seller_crm_contacts")
-        .select("id, lifecycle_stage, metadata")
-        .eq("seller_id", resolvedSellerId)
-        .eq("is_archived", false)
-        .limit(1);
-      const { data: existingContact } = normalizedPhone
-        ? await contactQuery.eq("phone", normalizedPhone).maybeSingle()
-        : await contactQuery.eq("email", String(email || "").trim()).maybeSingle();
+      console.info("[crm-auto-sync] starting", { lead_id: leadRow?.id || null, property_id, seller_id: resolvedSellerId });
+      const supabaseAdmin = createServiceClient();
+      console.info("[crm-auto-sync] using admin client");
+
+      let existingContact: { id: string; lifecycle_stage: string | null; metadata: Record<string, unknown> | null } | null = null;
+
+      if (normalizedPhone) {
+        const { data: phoneContact, error: phoneLookupError } = await supabaseAdmin
+          .from("seller_crm_contacts")
+          .select("id, lifecycle_stage, metadata")
+          .eq("seller_id", resolvedSellerId)
+          .eq("is_archived", false)
+          .eq("phone", normalizedPhone)
+          .limit(1)
+          .maybeSingle();
+        if (phoneLookupError) throw phoneLookupError;
+        existingContact = phoneContact;
+      }
+
+      if (!existingContact && normalizedEmail) {
+        const { data: emailContact, error: emailLookupError } = await supabaseAdmin
+          .from("seller_crm_contacts")
+          .select("id, lifecycle_stage, metadata")
+          .eq("seller_id", resolvedSellerId)
+          .eq("is_archived", false)
+          .eq("email", normalizedEmail)
+          .limit(1)
+          .maybeSingle();
+        if (emailLookupError) throw emailLookupError;
+        existingContact = emailContact;
+      }
+
+      console.info("[crm-auto-sync] existing contact lookup result", {
+        seller_id: resolvedSellerId,
+        found: Boolean(existingContact),
+        contact_id: existingContact?.id || null,
+      });
 
       const metadata = {
-        ...(existingContact?.metadata || {}),
-        last_property_id: property_id,
-        last_lead_id: leadRow?.id || null,
-        last_message: message || "",
+        ...((existingContact?.metadata as Record<string, unknown> | null) || {}),
         source: "property_detail_form",
+        last_lead_id: leadRow?.id || null,
+        last_property_id: property.id,
+        last_message: safeMessage,
+        last_buyer_name: name,
+        last_buyer_phone: normalizedPhone,
+        last_buyer_email: normalizedEmail,
+        last_enquiry_at: new Date().toISOString(),
       };
 
       let contactId = existingContact?.id;
       if (existingContact) {
-        const shouldKeepStage = ["converted", "lost", "qualified", "negotiation", "site_visit"].includes(existingContact.lifecycle_stage);
-        const { data: updatedContact } = await supabase
+        const shouldKeepStage = ["qualified", "site_visit", "negotiation", "converted", "lost", "archived"].includes(existingContact.lifecycle_stage || "");
+        const { data: updatedContact, error: updateError } = await supabaseAdmin
           .from("seller_crm_contacts")
           .update({
-            full_name: name,
+            full_name: name || undefined,
             phone: normalizedPhone || undefined,
-            whatsapp_number: normalizeIndianWhatsApp(normalizedPhone),
-            email: email || undefined,
+            whatsapp_number: normalizedWhatsAppNumber,
+            email: normalizedEmail || undefined,
+            lead_temperature: "hot",
             source: "property_enquiry",
             source_details: property.title || "Property enquiry",
-            notes: message || "Enquiry received from property detail form",
+            notes: safeMessage,
             lifecycle_stage: shouldKeepStage ? undefined : "new",
-            lead_temperature: "hot",
             metadata,
-            updated_by: resolvedSellerId,
+            updated_by: null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", existingContact.id)
           .eq("seller_id", resolvedSellerId)
           .select("id")
-          .maybeSingle();
-        contactId = updatedContact?.id || contactId;
+          .single();
+        if (updateError) throw updateError;
+        contactId = updatedContact.id;
+        console.info("[crm-auto-sync] contact updated", { contact_id: contactId });
       } else {
-        const { data: insertedContact } = await supabase
+        const { data: insertedContact, error: insertContactError } = await supabaseAdmin
           .from("seller_crm_contacts")
           .insert({
             seller_id: resolvedSellerId,
             full_name: name,
             phone: normalizedPhone,
-            whatsapp_number: normalizeIndianWhatsApp(normalizedPhone),
-            email: email || null,
+            whatsapp_number: normalizedWhatsAppNumber,
+            email: normalizedEmail,
             contact_type: "buyer",
             lifecycle_stage: "new",
             lead_temperature: "hot",
             source: "property_enquiry",
             source_details: property.title || "Property enquiry",
-            notes: message || "Enquiry received from property detail form",
+            notes: safeMessage,
             metadata,
-            created_by: resolvedSellerId,
-            updated_by: resolvedSellerId,
+            created_by: null,
+            updated_by: null,
           })
           .select("id")
           .single();
-        contactId = insertedContact?.id;
+        if (insertContactError) throw insertContactError;
+        contactId = insertedContact.id;
+        console.info("[crm-auto-sync] contact inserted", { contact_id: contactId });
       }
 
       if (contactId) {
-        const activityBody = message || "New enquiry submitted from property detail form.";
-        await supabase.from("seller_crm_activities").insert({
+        const activityMetadata = {
+          source: "property_detail_form",
+          lead_id: leadRow?.id || null,
+          property_id: property.id,
+          buyer_name: name,
+          buyer_phone: normalizedPhone,
+          buyer_email: normalizedEmail,
+        };
+
+        const { error: activityError } = await supabaseAdmin.from("seller_crm_activities").insert({
           seller_id: resolvedSellerId,
           contact_id: contactId,
           property_id,
           activity_type: "lead_created",
           channel: "system",
           title: "New property enquiry",
-          body: activityBody,
-          metadata: { lead_id: leadRow?.id || null, property_id, buyer_name: name, buyer_phone: normalizedPhone, buyer_email: email || null, source: "property_detail_form" },
-          created_by: resolvedSellerId,
+          body: safeMessage,
+          metadata: activityMetadata,
+          created_by: null,
         });
-        await supabase.from("seller_crm_notes").insert({
+        if (activityError) throw activityError;
+        console.info("[crm-auto-sync] activity inserted", { contact_id: contactId });
+
+        const { error: noteError } = await supabaseAdmin.from("seller_crm_notes").insert({
           seller_id: resolvedSellerId,
           contact_id: contactId,
           property_id,
           title: "Property enquiry",
-          body: activityBody,
-          metadata: { lead_id: leadRow?.id || null, source: "property_detail_form" },
-          created_by: resolvedSellerId,
+          body: safeMessage,
+          metadata: activityMetadata,
+          created_by: null,
         });
+        if (noteError) throw noteError;
+        console.info("[crm-auto-sync] note inserted", { contact_id: contactId });
       }
     } catch (crmError) {
-      console.error("[crm-auto-sync] failed to sync lead to CRM", crmError);
+      crmSync = "failed";
+      console.error("[crm-auto-sync] failed", toSupabaseErrorShape(crmError));
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, crmSync });
   } catch (err) {
     console.error("[property-lead] Lead API error:", err);
 
