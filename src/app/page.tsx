@@ -139,7 +139,7 @@ export default async function HomePage() {
             </div>
 
             <div className="flex gap-4 flex-wrap">
-              <Button href="/buy">
+              <Button href="/properties">
                 Explore Properties
               </Button>
 

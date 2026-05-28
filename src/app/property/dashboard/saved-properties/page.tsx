@@ -51,7 +51,7 @@ export default async function SavedPropertiesPage() {
         </h1>
 
         <Link
-          href="/buy"
+          href="/properties"
           className="text-sm text-red-600 hover:underline"
         >
           Browse More →

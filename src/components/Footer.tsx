@@ -53,12 +53,12 @@ export default function Footer() {
 
             <ul className="space-y-3 md:space-y-4 text-sm text-white/70">
               <li>
-                <Link href="/buy" className="hover:text-white transition-colors duration-200">
+                <Link href="/properties/buy" className="hover:text-white transition-colors duration-200">
                   Buy Properties
                 </Link>
               </li>
               <li>
-                <Link href="/rent" className="hover:text-white transition-colors duration-200">
+                <Link href="/properties/rent" className="hover:text-white transition-colors duration-200">
                   Rent Properties
                 </Link>
               </li>
