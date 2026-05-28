@@ -113,19 +113,34 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
   const action = async (url:string, method:string, body:any, success="Saved") => {
     setSaving(true); setError(null); setOkMsg(null);
     try {
-      const j = await (await fetch(url, { method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})).json();
-      if(!j.ok) throw new Error(j.error||"Save failed");
+      const response = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+      const responseTextOrJson = await response.text();
+      let json: any = null;
+      try { json = responseTextOrJson ? JSON.parse(responseTextOrJson) : null; } catch {}
+
+      if (!response.ok || json?.success === false || json?.ok === false) {
+        const apiError = typeof json?.error === "string" && json.error.trim() ? json.error : null;
+        const safeMessage = (response.status === 403 || response.status === 404)
+          ? "Could not update contact. Please refresh and try again."
+          : (apiError || "Could not update contact. Please try again.");
+        const failure: any = new Error(safeMessage);
+        failure.status = response.status;
+        failure.responseTextOrJson = json ?? responseTextOrJson;
+        throw failure;
+      }
+
       if (mode === "contact-detail" && method === "PATCH" && url.startsWith("/api/seller/crm/contacts/")) {
-        const updatedContact = j?.contact ?? j?.data?.contact ?? j?.data;
+        const updatedContact = json?.contact ?? json?.data?.contact ?? json?.data;
+        let mergedLocally = false;
         if (updatedContact && typeof updatedContact === "object") {
+          mergedLocally = true;
           setData((prev:any) => ({ ...(prev ?? {}), ...updatedContact }));
         }
         setOkMsg(success);
         try {
           await load();
-        } catch (reloadErr) {
-          console.error("[seller-crm-contact] reload after update failed", reloadErr);
-          setOkMsg("Contact updated. Some related data may be stale until refresh.");
+        } catch {
+          if (!mergedLocally) throw new Error("Contact updated but could not refresh latest data.");
         }
         return true;
       }
@@ -135,8 +150,16 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
     }
     catch(e:any){
       if (mode === "contact-detail" && method === "PATCH" && url.startsWith("/api/seller/crm/contacts/")) {
-        console.error("[seller-crm-contact] update failed", e);
-        setError("Could not update contact. Please try again.");
+        const updateField = Object.prototype.hasOwnProperty.call(body ?? {}, "lifecycle_stage") ? "lifecycle_stage" : (Object.prototype.hasOwnProperty.call(body ?? {}, "lead_temperature") ? "lead_temperature" : "unknown");
+        const updateValue = updateField === "lifecycle_stage" ? body?.lifecycle_stage : (updateField === "lead_temperature" ? body?.lead_temperature : undefined);
+        console.error("[seller-crm-contact] update failed", {
+          id,
+          field: updateField,
+          value: updateValue,
+          status: e?.status,
+          responseTextOrJson: e?.responseTextOrJson ?? e?.message,
+        });
+        setError(e?.message || "Could not update contact. Please try again.");
       } else {
         console.error("[SellerCrmClientPage/action]", e);
         setError(e.message||"Save failed");
