@@ -12,9 +12,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!isUuid(id)) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
     const ctx = await resolveSellerCrmContext();
     if (!ctx.ok) return NextResponse.json({ ok: false, error: ctx.error, details: ctx.details }, { status: ctx.status });
+    console.log("[seller-crm-contact] requested contact id", id);
+    const { data: foundAny } = await ctx.supabase.from("seller_crm_contacts").select("id,seller_id").eq("id", id).maybeSingle();
+    console.log("[seller-crm-contact] contact exists any seller", { foundAny: Boolean(foundAny), ownerSellerId: foundAny?.seller_id ?? null });
     const { data, error } = await ctx.supabase.from("seller_crm_contacts").select("*").eq("id", id).eq("seller_id", ctx.sellerId).maybeSingle();
+    console.log("[seller-crm-contact] seller scoped found", { found: Boolean(data) });
     if (error) throw error;
-    if (!data) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (!data) return NextResponse.json({ ok: false, error: "This CRM contact does not belong to your seller account." }, { status: 404 });
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     console.error("[seller-crm/contacts/:id]", e);
@@ -25,7 +29,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    console.log("[seller-crm-contact] PATCH reached", { id });
+    console.log("[seller-crm-contact] requested contact id", id);
     if (!isUuid(id)) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
 
     const ctx = await resolveSellerCrmContext();
@@ -67,14 +71,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (safeBody.is_archived === false) safeBody.archived_at = null;
 
     console.log("[seller-crm-contact] seller resolved", { sellerId: ctx.sellerId });
+    const { data: foundAny } = await ctx.supabase
+      .from("seller_crm_contacts")
+      .select("id,seller_id")
+      .eq("id", id)
+      .maybeSingle();
+    console.log("[seller-crm-contact] contact exists any seller", { foundAny: Boolean(foundAny), ownerSellerId: foundAny?.seller_id ?? null });
     const { data: contact } = await ctx.supabase
       .from("seller_crm_contacts")
       .select("lifecycle_stage,lead_temperature,contact_id,id")
       .eq("id", id)
       .eq("seller_id", ctx.sellerId)
       .maybeSingle();
-    console.log("[seller-crm-contact] lookup result", { found: Boolean(contact) });
-    if (!contact) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    console.log("[seller-crm-contact] seller scoped found", { found: Boolean(contact) });
+    if (!contact) return NextResponse.json({ ok: false, error: "This contact could not be updated because it does not belong to your seller account." }, { status: 404 });
 
     const updatePayload = { ...safeBody, updated_by: ctx.sellerId };
     console.log("[seller-crm-contact] update payload", updatePayload);
