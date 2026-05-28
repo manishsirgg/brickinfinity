@@ -25,9 +25,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    console.info("[seller-crm-contact] PATCH reached", { id });
     if (!isUuid(id)) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
     const ctx = await resolveSellerCrmContext();
     if (!ctx.ok) return NextResponse.json({ ok: false, error: ctx.error, details: ctx.details }, { status: ctx.status });
+    console.info("[seller-crm-contact] seller resolved");
     const body = await req.json();
     const safeBody: any = Object.fromEntries(Object.entries(body ?? {}).filter(([k]) => allow.includes(k)));
     if (safeBody.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(safeBody.email).trim())) {
@@ -40,6 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (safeBody.is_archived === false) safeBody.archived_at = null;
 
     const { data: current } = await ctx.supabase.from("seller_crm_contacts").select("lifecycle_stage,lead_temperature,contact_id,id").eq("id", id).eq("seller_id", ctx.sellerId).maybeSingle();
+    console.info("[seller-crm-contact] contact lookup result", { found: Boolean(current) });
     if (!current) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     if (safeBody.lifecycle_stage && !stages.includes(safeBody.lifecycle_stage)) return NextResponse.json({ ok: false, error: "Invalid lifecycle_stage" }, { status: 400 });
     if (safeBody.lead_temperature && !temperatures.includes(safeBody.lead_temperature)) return NextResponse.json({ ok: false, error: "Invalid lead_temperature" }, { status: 400 });
@@ -64,7 +67,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (current.lead_temperature !== data.lead_temperature) {
       await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "system", channel: "system", title: "Lead temperature changed", old_value: current.lead_temperature, new_value: data.lead_temperature, created_by: ctx.sellerId });
     }
-    return NextResponse.json({ ok: true, data });
+    console.info("[seller-crm-contact] updated", { id: data.id });
+    return NextResponse.json({ ok: true, success: true, contact: data, data });
   } catch (e) {
     console.error("[seller-crm/contacts/:id]", e);
     return NextResponse.json({ ok: false, error: "Unexpected error" }, { status: 500 });
