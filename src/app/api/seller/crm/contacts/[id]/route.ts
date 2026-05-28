@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getContactPropertyId } from "@/lib/seller-crm/property-link";
+import { buildPropertySummary, getContactPropertyId } from "@/lib/seller-crm/property-link";
 
 const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const allow = ["full_name", "phone", "whatsapp_number", "email", "contact_type", "lifecycle_stage", "lead_temperature", "source", "source_details", "city", "locality", "state", "country", "preferred_purpose", "preferred_property_type", "preferred_bedrooms", "budget_min", "budget_max", "preferred_location", "notes", "last_contacted_at", "next_followup_at", "is_archived", "archived_at", "metadata"];
@@ -23,15 +23,19 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!data) return NextResponse.json({ ok: false, error: "This CRM contact does not belong to your seller account." }, { status: 404 });
     const propertyId = getContactPropertyId(data);
     let propertySummary: any = null;
+    console.log("[seller-crm-property] linked ids", propertyId ? [propertyId] : []);
     if (propertyId) {
       const { data: property } = await ctx.supabase
         .from("properties")
-        .select("id,slug,title,property_type,listing_type,city,locality,price,monthly_rent,rent,seller_id")
+        .select("id,seller_id,title,slug,listing_type,property_type,price,hourly_rate,daily_rate,monthly_rate,status,verification_status,deleted_at")
         .eq("id", propertyId)
         .eq("seller_id", ctx.sellerId)
+        .is("deleted_at", null)
         .maybeSingle();
-      propertySummary = property ?? null;
+      propertySummary = property ? buildPropertySummary(property) : null;
     }
+    console.log("[seller-crm-property] fetched summaries count", propertySummary ? 1 : 0);
+    console.log("[seller-crm-property] summary attached", { contactId: data.id, attached: Boolean(propertySummary) });
     return NextResponse.json({ ok: true, data: { ...data, property_summary: propertySummary } });
   } catch (e) {
     console.error("[seller-crm/contacts/:id]", e);

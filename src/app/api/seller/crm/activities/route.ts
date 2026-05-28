@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
-import { getContactPropertyId } from "@/lib/seller-crm/property-link";
+import { buildPropertySummary, getContactPropertyId } from "@/lib/seller-crm/property-link";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,13 +21,22 @@ export async function GET(req: NextRequest) {
     const activitiesBase = rows.map((r:any)=>({ ...r, contact_name: r.contact_id ? (map.get(r.contact_id) || null) : null }));
     const propertyIds = Array.from(new Set(activitiesBase.map((r:any)=>r.property_id || getContactPropertyId(r)).filter(Boolean)));
     const { data: properties } = propertyIds.length
-      ? await c.supabase.from("properties").select("id,slug,title,property_type,listing_type,city,locality,price,monthly_rent,rent,seller_id").eq("seller_id", c.sellerId).in("id", propertyIds as string[])
+      ? await c.supabase.from("properties").select("id,seller_id,title,slug,listing_type,property_type,price,hourly_rate,daily_rate,monthly_rate,status,verification_status,deleted_at").eq("seller_id", c.sellerId).in("id", propertyIds as string[]).is("deleted_at", null)
       : { data: [] as any[] };
-    const propertyMap = new Map((properties ?? []).map((p:any)=>[p.id,p]));
-    const activities = activitiesBase.map((r:any) => ({
-      ...r,
-      property_summary: propertyMap.get(r.property_id || getContactPropertyId(r)) ?? null,
-    }));
+    console.log("[seller-crm-property] linked ids", propertyIds);
+const summaries = (properties ?? []).map((p:any)=>buildPropertySummary(p));
+console.log("[seller-crm-property] fetched summaries count", summaries.length);
+const propertyMap = new Map(summaries.map((p:any)=>[p.id,p]));
+    const activities = activitiesBase.map((r:any) => {
+      const propertySummary = propertyMap.get(r.property_id || getContactPropertyId(r)) ?? null;
+      if (!propertySummary && (r.property_id || getContactPropertyId(r))) {
+        console.log("[seller-crm-property] summary attached", { activityId: r.id, attached: false });
+      }
+      return {
+        ...r,
+        property_summary: propertySummary,
+      };
+    });
     return NextResponse.json({ ok: true, data: activities, activities });
   } catch (e) {
     console.error("[seller-crm/activities]", e);

@@ -44,9 +44,20 @@ const formatDateSafe = (value: unknown) => {
   return formatDateTime(d.toISOString());
 };
 const propertyHref = (source:any) => {
+  const directHref = source?.property_summary?.href;
+  if (directHref) return directHref;
   const summary = source?.property_summary;
   return buildPropertyHref({ id: summary?.id ?? getContactPropertyId(source), slug: summary?.slug ?? getContactPropertySlug(source) });
 };
+const propertyPriceLabel = (summary: any) => {
+  if (!summary) return "—";
+  if (summary.monthly_rate) return `${inr(summary.monthly_rate)} / month`;
+  if (summary.daily_rate) return `${inr(summary.daily_rate)} / day`;
+  if (summary.hourly_rate) return `${inr(summary.hourly_rate)} / hour`;
+  if (summary.price) return inr(summary.price);
+  return "—";
+};
+
 const defaultSummary = {
   totalContacts: 0,
   newContacts: 0,
@@ -217,8 +228,7 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
         {getContactPropertyId(data) ? <>
           <p>{safeText(data?.property_summary?.title || data?.property_summary?.property_type, "Property")}</p>
           <p className="text-gray-600">{[data?.property_summary?.listing_type, data?.property_summary?.property_type].filter(Boolean).join(" • ") || "—"}</p>
-          <p className="text-gray-600">{[data?.property_summary?.locality, data?.property_summary?.city].filter(Boolean).join(", ") || "—"}</p>
-          <p className="text-gray-600">{(data?.property_summary?.price || data?.property_summary?.monthly_rent || data?.property_summary?.rent) ? inr(data?.property_summary?.price || data?.property_summary?.monthly_rent || data?.property_summary?.rent) : "—"}</p>
+          <p className="text-gray-600">{propertyPriceLabel(data?.property_summary)}</p>
           {propertyHref(data) ? <Link className="underline" href={propertyHref(data)!}>View Property</Link> : <span className="text-gray-500">Property link unavailable</span>}
         </> : <p className="text-gray-500">No property linked.</p>}
       </div>
