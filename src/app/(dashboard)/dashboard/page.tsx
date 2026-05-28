@@ -223,7 +223,7 @@ export default async function DashboardHome() {
               </h3>
 
               <p className="text-sm text-gray-500 mt-2">
-                Track buyer inquiries and engagement.
+                View fresh property enquiries.
               </p>
 
             </Link>
@@ -239,7 +239,7 @@ export default async function DashboardHome() {
               className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition"
             >
               <h3 className="font-semibold text-gray-800">CRM</h3>
-              <p className="text-sm text-gray-500 mt-2">Manage contacts, deals, follow-ups, and activity.</p>
+              <p className="text-sm text-gray-500 mt-2">Manage contacts, follow-ups, and conversions.</p>
             </Link>
           )}
 
