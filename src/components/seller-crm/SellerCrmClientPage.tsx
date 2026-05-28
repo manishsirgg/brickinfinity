@@ -112,8 +112,37 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
 
   const action = async (url:string, method:string, body:any, success="Saved") => {
     setSaving(true); setError(null); setOkMsg(null);
-    try { const j = await (await fetch(url, { method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})).json(); if(!j.ok) throw new Error(j.error||"Save failed"); setOkMsg(success); await load(); return true; }
-    catch(e:any){ console.error("[SellerCrmClientPage/action]", e); setError(e.message||"Save failed"); return false; }
+    try {
+      const j = await (await fetch(url, { method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})).json();
+      if(!j.ok) throw new Error(j.error||"Save failed");
+      if (mode === "contact-detail" && method === "PATCH" && url.startsWith("/api/seller/crm/contacts/")) {
+        const updatedContact = j?.contact ?? j?.data?.contact ?? j?.data;
+        if (updatedContact && typeof updatedContact === "object") {
+          setData((prev:any) => ({ ...(prev ?? {}), ...updatedContact }));
+        }
+        setOkMsg(success);
+        try {
+          await load();
+        } catch (reloadErr) {
+          console.error("[seller-crm-contact] reload after update failed", reloadErr);
+          setOkMsg("Contact updated. Some related data may be stale until refresh.");
+        }
+        return true;
+      }
+      setOkMsg(success);
+      await load();
+      return true;
+    }
+    catch(e:any){
+      if (mode === "contact-detail" && method === "PATCH" && url.startsWith("/api/seller/crm/contacts/")) {
+        console.error("[seller-crm-contact] update failed", e);
+        setError("Could not update contact. Please try again.");
+      } else {
+        console.error("[SellerCrmClientPage/action]", e);
+        setError(e.message||"Save failed");
+      }
+      return false;
+    }
     finally{ setSaving(false); }
   };
 
@@ -129,7 +158,7 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
   return <div className="max-w-7xl mx-auto px-4 py-8 space-y-4">
     <h1 className="text-2xl font-bold">{title}</h1>
     {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-    {error && !loading && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">CRM data could not be loaded. Please refresh.</div>}
+    {error && !loading && !(mode==="contact-detail" && data) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">CRM data could not be loaded. Please refresh.</div>}
     {okMsg && <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">{okMsg}</div>}
     {loading && <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">Loading…</div>}
 
@@ -141,6 +170,7 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
     </div>}
 
     {!loading && mode==="contact-detail" && data && <div className="space-y-3">
+
       <div className="border rounded p-3"><p className="font-semibold text-lg">{safeText(data?.full_name, "Unnamed contact")}</p><p className="text-sm">{safeText(data?.phone, "")} • {safeText(data?.email, "")} • {safeText(data?.whatsapp_number, "")}</p><p className="text-sm">Source: {safeText(data?.source)} • Stage: {humanize(data?.lifecycle_stage ?? "new")} • Temp: {humanize(data?.lead_temperature ?? "cold")}</p><p className="text-xs text-gray-500">Created {formatDateSafe(data?.created_at)} • Updated {formatDateSafe(data?.updated_at)}</p><div className="mt-2 flex gap-2 flex-wrap"><button className="underline" onClick={()=>logAndOpen(data,"call")}>Call</button><button className="underline" onClick={()=>logAndOpen(data,"whatsapp")}>WhatsApp</button><button className="underline" onClick={()=>logAndOpen(data,"email")}>Email</button>{propId(data)&&<Link className="underline" href={`/property/${propId(data)}`}>View Property</Link>}</div></div>
       <div className="border rounded p-3 grid md:grid-cols-2 gap-2"><select className="border rounded p-2" value={data.lifecycle_stage} onChange={e=>action(`/api/seller/crm/contacts/${id}`,"PATCH",{lifecycle_stage:e.target.value},"Lifecycle stage updated")} disabled={saving}>{stages.map(s=><option key={s} value={s}>{humanize(s)}</option>)}</select><select className="border rounded p-2" value={data.lead_temperature} onChange={e=>action(`/api/seller/crm/contacts/${id}`,"PATCH",{lead_temperature:e.target.value},"Lead temperature updated")} disabled={saving}>{temps.map(t=><option key={t} value={t}>{humanize(t)}</option>)}</select></div>
       <div className="border rounded p-3"><p className="font-medium mb-2">Notes</p><button className="border rounded px-2 py-1 text-sm" onClick={()=>{const body=prompt("Note"); if(body?.trim()) action("/api/seller/crm/notes","POST",{body,contact_id:id},"Note added");}}>Add note</button>{(aux.notes||[]).map((n:any)=><div key={n.id} className="border rounded p-2 mt-2"><p className="text-sm">{n.body} {n.is_pinned?"📌":""}{n.is_private?"🔒":""}</p><button className="text-xs underline mr-2" onClick={()=>{const body=prompt("Edit",n.body); if(body?.trim()) action(`/api/seller/crm/notes/${n.id}`,"PATCH",{body},"Note updated");}}>Edit</button><button className="text-xs underline" onClick={()=>action(`/api/seller/crm/notes/${n.id}`,"DELETE",{},"Note deleted")}>Delete</button></div>)}</div>
