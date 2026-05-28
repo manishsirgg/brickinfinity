@@ -161,6 +161,8 @@ export async function POST(req: Request) {
     console.info("[property-lead] lead created", { lead_id: leadRow?.id || null, property_id, seller_id: resolvedSellerId });
 
     let crmSync: "completed" | "failed" = "completed";
+    let notificationSync: "completed" | "failed" | "skipped" = "skipped";
+    let contactId: string | undefined;
     try {
       console.info("[crm-auto-sync] starting", { lead_id: leadRow?.id || null, property_id, seller_id: resolvedSellerId });
       const supabaseAdmin = createServiceClient();
@@ -212,7 +214,7 @@ export async function POST(req: Request) {
         last_enquiry_at: new Date().toISOString(),
       };
 
-      let contactId = existingContact?.id;
+      contactId = existingContact?.id;
       if (existingContact) {
         const shouldKeepStage = ["qualified", "site_visit", "negotiation", "converted", "lost", "archived"].includes(existingContact.lifecycle_stage || "");
         const { data: updatedContact, error: updateError } = await supabaseAdmin
@@ -305,7 +307,65 @@ export async function POST(req: Request) {
       console.error("[crm-auto-sync] failed", toSupabaseErrorShape(crmError));
     }
 
-    return NextResponse.json({ success: true, crmSync });
+    if (leadRow?.id && resolvedSellerId) {
+      try {
+        const supabaseAdmin = createServiceClient();
+        const propertyTitle = property.title || "your property";
+        const notificationMetadata = {
+          source: "property_detail_form",
+          lead_id: leadRow.id,
+          property_id: property.id,
+          seller_id: resolvedSellerId,
+          buyer_name: name,
+          buyer_phone: normalizedPhone,
+          buyer_email: normalizedEmail,
+          property_title: property.title || null,
+          crm_contact_id: contactId || null,
+          created_from: "api/leads",
+        };
+
+        const notificationLink = contactId
+          ? `/seller/crm/contacts/${contactId}`
+          : "/dashboard/leads";
+
+        const { error: notificationError } = await supabaseAdmin.rpc(
+          "create_notification",
+          {
+            p_user_id: resolvedSellerId,
+            p_title: "New property enquiry",
+            p_message: `${name} enquired about ${propertyTitle}.`,
+            p_type: "lead",
+            p_category: "lead",
+            p_priority: "high",
+            p_link_url: notificationLink,
+            p_action_label: "View Lead",
+            p_entity_type: "lead",
+            p_entity_id: leadRow.id,
+            p_metadata: notificationMetadata,
+            p_expires_at: null,
+          }
+        );
+
+        if (notificationError) throw notificationError;
+        notificationSync = "completed";
+        console.info("[notification-sync] seller lead notification created", {
+          lead_id: leadRow.id,
+          seller_id: resolvedSellerId,
+          property_id: property.id,
+          crm_contact_id: contactId || null,
+        });
+      } catch (notificationError) {
+        notificationSync = "failed";
+        console.error("[notification-sync] seller lead notification failed", {
+          lead_id: leadRow.id,
+          seller_id: resolvedSellerId,
+          property_id: property.id,
+          error: toSupabaseErrorShape(notificationError),
+        });
+      }
+    }
+
+    return NextResponse.json({ success: true, crmSync, notificationSync });
   } catch (err) {
     console.error("[property-lead] Lead API error:", err);
 
