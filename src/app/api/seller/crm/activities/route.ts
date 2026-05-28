@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
+import { getContactPropertyId } from "@/lib/seller-crm/property-link";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,7 +18,16 @@ export async function GET(req: NextRequest) {
     const contactIds = Array.from(new Set(rows.map((r:any)=>r.contact_id).filter(Boolean)));
     const { data: contacts } = contactIds.length ? await c.supabase.from("seller_crm_contacts").select("id,full_name").eq("seller_id",c.sellerId).in("id", contactIds) : {data:[] as any[]};
     const map = new Map((contacts||[]).map((x:any)=>[x.id,x.full_name]));
-    const activities = rows.map((r:any)=>({ ...r, contact_name: r.contact_id ? (map.get(r.contact_id) || null) : null }));
+    const activitiesBase = rows.map((r:any)=>({ ...r, contact_name: r.contact_id ? (map.get(r.contact_id) || null) : null }));
+    const propertyIds = Array.from(new Set(activitiesBase.map((r:any)=>r.property_id || getContactPropertyId(r)).filter(Boolean)));
+    const { data: properties } = propertyIds.length
+      ? await c.supabase.from("properties").select("id,slug,title,property_type,listing_type,city,locality,price,monthly_rent,rent,seller_id").eq("seller_id", c.sellerId).in("id", propertyIds as string[])
+      : { data: [] as any[] };
+    const propertyMap = new Map((properties ?? []).map((p:any)=>[p.id,p]));
+    const activities = activitiesBase.map((r:any) => ({
+      ...r,
+      property_summary: propertyMap.get(r.property_id || getContactPropertyId(r)) ?? null,
+    }));
     return NextResponse.json({ ok: true, data: activities, activities });
   } catch (e) {
     console.error("[seller-crm/activities]", e);
