@@ -3,6 +3,8 @@ import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
 
 const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const allow = ["full_name", "phone", "whatsapp_number", "email", "contact_type", "lifecycle_stage", "lead_temperature", "source", "source_details", "city", "locality", "state", "country", "preferred_purpose", "preferred_property_type", "preferred_bedrooms", "budget_min", "budget_max", "preferred_location", "notes", "last_contacted_at", "next_followup_at", "is_archived", "archived_at", "metadata"];
+const stages = ["new", "contacted", "qualified", "site_visit", "negotiation", "converted", "lost", "archived"];
+const temperatures = ["cold", "warm", "hot"];
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -37,6 +39,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (safeBody.is_archived === true && !safeBody.archived_at) safeBody.archived_at = new Date().toISOString();
     if (safeBody.is_archived === false) safeBody.archived_at = null;
 
+    const { data: current } = await ctx.supabase.from("seller_crm_contacts").select("lifecycle_stage,lead_temperature,contact_id,id").eq("id", id).eq("seller_id", ctx.sellerId).maybeSingle();
+    if (!current) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (safeBody.lifecycle_stage && !stages.includes(safeBody.lifecycle_stage)) return NextResponse.json({ ok: false, error: "Invalid lifecycle_stage" }, { status: 400 });
+    if (safeBody.lead_temperature && !temperatures.includes(safeBody.lead_temperature)) return NextResponse.json({ ok: false, error: "Invalid lead_temperature" }, { status: 400 });
     const { data, error } = await ctx.supabase
       .from("seller_crm_contacts")
       .update({ ...safeBody, updated_by: ctx.sellerId })
@@ -50,6 +56,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: false, error: friendly }, { status: 400 });
     }
     if (!data) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (current.lifecycle_stage !== data.lifecycle_stage) {
+      await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "stage_change", channel: "system", title: "Stage changed", old_value: current.lifecycle_stage, new_value: data.lifecycle_stage, created_by: ctx.sellerId });
+      if (data.lifecycle_stage === "converted") await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "converted", channel: "system", title: "Contact converted", created_by: ctx.sellerId });
+      if (data.lifecycle_stage === "lost") await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "lost", channel: "system", title: "Contact lost", created_by: ctx.sellerId });
+    }
+    if (current.lead_temperature !== data.lead_temperature) {
+      await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "system", channel: "system", title: "Lead temperature changed", old_value: current.lead_temperature, new_value: data.lead_temperature, created_by: ctx.sellerId });
+    }
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     console.error("[seller-crm/contacts/:id]", e);
