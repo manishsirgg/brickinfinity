@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getContactPropertyId } from "@/lib/seller-crm/property-link";
 
 const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const allow = ["full_name", "phone", "whatsapp_number", "email", "contact_type", "lifecycle_stage", "lead_temperature", "source", "source_details", "city", "locality", "state", "country", "preferred_purpose", "preferred_property_type", "preferred_bedrooms", "budget_min", "budget_max", "preferred_location", "notes", "last_contacted_at", "next_followup_at", "is_archived", "archived_at", "metadata"];
@@ -20,7 +21,18 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     console.log("[seller-crm-contact] seller scoped found", { found: Boolean(data) });
     if (error) throw error;
     if (!data) return NextResponse.json({ ok: false, error: "This CRM contact does not belong to your seller account." }, { status: 404 });
-    return NextResponse.json({ ok: true, data });
+    const propertyId = getContactPropertyId(data);
+    let propertySummary: any = null;
+    if (propertyId) {
+      const { data: property } = await ctx.supabase
+        .from("properties")
+        .select("id,slug,title,property_type,listing_type,city,locality,price,monthly_rent,rent,seller_id")
+        .eq("id", propertyId)
+        .eq("seller_id", ctx.sellerId)
+        .maybeSingle();
+      propertySummary = property ?? null;
+    }
+    return NextResponse.json({ ok: true, data: { ...data, property_summary: propertySummary } });
   } catch (e) {
     console.error("[seller-crm/contacts/:id]", e);
     return NextResponse.json({ ok: false, error: "Unexpected error" }, { status: 500 });
