@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSellerCrmContext } from "@/lib/seller-crm/auth";
+import { createServiceClient } from "@/lib/supabase/service";
 
 const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const allow = ["full_name", "phone", "whatsapp_number", "email", "contact_type", "lifecycle_stage", "lead_temperature", "source", "source_details", "city", "locality", "state", "country", "preferred_purpose", "preferred_property_type", "preferred_bedrooms", "budget_min", "budget_max", "preferred_location", "notes", "last_contacted_at", "next_followup_at", "is_archived", "archived_at", "metadata"];
@@ -70,30 +71,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (safeBody.is_archived === true && !safeBody.archived_at) safeBody.archived_at = new Date().toISOString();
     if (safeBody.is_archived === false) safeBody.archived_at = null;
 
-    console.log("[seller-crm-contact] seller resolved", { sellerId: ctx.sellerId });
-    const { data: foundAny } = await ctx.supabase
+    const adminSupabase = createServiceClient();
+    console.log("[seller-crm-contact] using verified admin update");
+    const { data: contact, error: contactError } = await adminSupabase
       .from("seller_crm_contacts")
-      .select("id,seller_id")
+      .select("*")
       .eq("id", id)
       .maybeSingle();
-    console.log("[seller-crm-contact] contact exists any seller", { foundAny: Boolean(foundAny), ownerSellerId: foundAny?.seller_id ?? null });
-    const { data: contact } = await ctx.supabase
-      .from("seller_crm_contacts")
-      .select("lifecycle_stage,lead_temperature,contact_id,id")
-      .eq("id", id)
-      .eq("seller_id", ctx.sellerId)
-      .maybeSingle();
-    console.log("[seller-crm-contact] seller scoped found", { found: Boolean(contact) });
-    if (!contact) return NextResponse.json({ ok: false, error: "This contact could not be updated because it does not belong to your seller account." }, { status: 404 });
+    if (contactError) throw contactError;
+    if (!contact) return NextResponse.json({ success: false, ok: false, error: "CRM contact not found." }, { status: 404 });
+    const ownerMatches = contact.seller_id === ctx.sellerId;
+    console.log("[seller-crm-contact] verified owner check", {
+      routeContactId: id,
+      ctxSellerId: ctx.sellerId,
+      contactSellerId: contact.seller_id ?? null,
+      ownerMatches,
+    });
+    if (!ownerMatches) {
+      return NextResponse.json({ success: false, ok: false, error: "This contact could not be updated because it does not belong to your seller account." }, { status: 404 });
+    }
 
-    const updatePayload = { ...safeBody, updated_by: ctx.sellerId };
+    const updatePayload: any = { ...safeBody, updated_by: ctx.sellerId };
+    if (safeBody.lifecycle_stage === "archived") {
+      updatePayload.is_archived = true;
+      updatePayload.archived_at = new Date().toISOString();
+    } else if (safeBody.lifecycle_stage && contact.is_archived) {
+      updatePayload.is_archived = false;
+      updatePayload.archived_at = null;
+    }
     console.log("[seller-crm-contact] update payload", updatePayload);
 
-    const { data: updatedContact, error: updateError } = await ctx.supabase
+    const { data: updatedContact, error: updateError } = await adminSupabase
       .from("seller_crm_contacts")
       .update(updatePayload)
       .eq("id", id)
-      .eq("seller_id", ctx.sellerId)
       .select("*")
       .maybeSingle();
 
@@ -104,22 +115,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: false, success: false, error: friendly }, { status: 400 });
     }
     if (!updatedContact) return NextResponse.json({ ok: false, success: false, error: "Not found" }, { status: 404 });
+    console.log("[seller-crm-contact] update completed", { id: updatedContact.id });
 
     if (contact.lifecycle_stage !== updatedContact.lifecycle_stage) {
-      const { error: stageLogError } = await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "stage_change", channel: "system", title: "Stage changed", old_value: contact.lifecycle_stage, new_value: updatedContact.lifecycle_stage, created_by: ctx.sellerId });
-      if (stageLogError) console.error("[seller-crm-contact] stage activity logging failed", stageLogError);
+      const { error: stageLogError } = await adminSupabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "stage_change", channel: "system", title: "Stage changed", old_value: contact.lifecycle_stage, new_value: updatedContact.lifecycle_stage, metadata: { old_value: contact.lifecycle_stage, new_value: updatedContact.lifecycle_stage }, created_by: ctx.sellerId });
+      if (stageLogError) console.error("[seller-crm-contact] activity log failed non-blocking", stageLogError);
       if (updatedContact.lifecycle_stage === "converted") {
-        const { error: convertedLogError } = await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "converted", channel: "system", title: "Contact converted", created_by: ctx.sellerId });
-        if (convertedLogError) console.error("[seller-crm-contact] converted activity logging failed", convertedLogError);
+        const { error: convertedLogError } = await adminSupabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "converted", channel: "system", title: "Contact converted", metadata: { old_value: contact.lifecycle_stage, new_value: updatedContact.lifecycle_stage }, created_by: ctx.sellerId });
+        if (convertedLogError) console.error("[seller-crm-contact] activity log failed non-blocking", convertedLogError);
       }
       if (updatedContact.lifecycle_stage === "lost") {
-        const { error: lostLogError } = await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "lost", channel: "system", title: "Contact lost", created_by: ctx.sellerId });
-        if (lostLogError) console.error("[seller-crm-contact] lost activity logging failed", lostLogError);
+        const { error: lostLogError } = await adminSupabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "lost", channel: "system", title: "Contact lost", metadata: { old_value: contact.lifecycle_stage, new_value: updatedContact.lifecycle_stage }, created_by: ctx.sellerId });
+        if (lostLogError) console.error("[seller-crm-contact] activity log failed non-blocking", lostLogError);
       }
     }
     if (contact.lead_temperature !== updatedContact.lead_temperature) {
-      const { error: temperatureLogError } = await ctx.supabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "system", channel: "system", title: "Lead temperature changed", old_value: contact.lead_temperature, new_value: updatedContact.lead_temperature, created_by: ctx.sellerId });
-      if (temperatureLogError) console.error("[seller-crm-contact] temperature activity logging failed", temperatureLogError);
+      const { error: temperatureLogError } = await adminSupabase.from("seller_crm_activities").insert({ seller_id: ctx.sellerId, contact_id: id, activity_type: "system", channel: "system", title: "Lead temperature changed", old_value: contact.lead_temperature, new_value: updatedContact.lead_temperature, metadata: { old_value: contact.lead_temperature, new_value: updatedContact.lead_temperature }, created_by: ctx.sellerId });
+      if (temperatureLogError) console.error("[seller-crm-contact] activity log failed non-blocking", temperatureLogError);
     }
 
     return NextResponse.json({ success: true, ok: true, contact: updatedContact, data: updatedContact });
