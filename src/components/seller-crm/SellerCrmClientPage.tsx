@@ -5,6 +5,7 @@ import { formatCurrency, formatDateTime, humanize } from "@/lib/seller-crm/forma
 import { SellerCrmStatusBadge } from "./SellerCrmBadges";
 import { buildPropertyHref, getContactPropertyId, getContactPropertySlug } from "@/lib/seller-crm/property-link";
 import { formatSellerCrmDealStage, SELLER_CRM_DEAL_STAGES } from "@/lib/seller-crm/deal-stages";
+import DashboardPageHeader from "@/components/ui/DashboardPageHeader";
 
 type Mode = "overview" | "contacts" | "contact-detail" | "deals" | "deal-detail" | "followups" | "activities" | "settings";
 const stages = ["new","contacted","qualified","site_visit","negotiation","converted","lost","archived"];
@@ -72,7 +73,7 @@ const defaultSummary = {
   recentActivities: [] as any[],
 };
 
-export function SellerCrmClientPage({ title, mode="overview", id }: { title: string; subtitle?: string; mode?: Mode; id?: string }) {
+export function SellerCrmClientPage({ title, subtitle, mode="overview", id }: { title: string; subtitle?: string; mode?: Mode; id?: string }) {
   const [data, setData] = useState<any>(null);
   const [aux, setAux] = useState<any>({});
   const [tab, setTab] = useState("Overview");
@@ -207,17 +208,20 @@ setAux({notes:asArray(nj?.notes ?? nj?.data ?? nj), followups:asArray(fj?.follow
   const followupBuckets = useMemo(()=>{ const now=Date.now(), today=(new Date()).toDateString(); const arr=asArray(data); return {overdue:arr.filter((x:any)=>x?.status==="scheduled"&&x?.due_at&&new Date(x.due_at).getTime()<now),today:arr.filter((x:any)=>x?.status==="scheduled"&&x?.due_at&&new Date(x.due_at).toDateString()===today),upcoming:arr.filter((x:any)=>x?.status==="scheduled"&&x?.due_at&&new Date(x.due_at).getTime()>now&&new Date(x.due_at).toDateString()!==today),completed:arr.filter((x:any)=>x?.status==="completed"),cancelled:arr.filter((x:any)=>x?.status==="cancelled"),missed:arr.filter((x:any)=>x?.status==="missed")}; },[data]);
 
   return <div className="max-w-7xl mx-auto px-4 py-8 space-y-4">
-    <h1 className="text-2xl font-bold">{title}</h1>
+    <DashboardPageHeader title={title} description={subtitle} showBackToDashboard />
     {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     {error && !loading && !(mode==="contact-detail" && data) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">CRM data could not be loaded. Please refresh.</div>}
     {okMsg && <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">{okMsg}</div>}
     {loading && <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">Loading…</div>}
 
     {!loading && mode==="overview" && <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[
-        ["Total contacts", data?.totalContacts],["New contacts",data?.newContacts],["Hot leads",data?.hotLeads],["Due today",data?.followupsDueToday],["Overdue",data?.overdueFollowups]
-      ].map(([k,v])=><div key={String(k)} className="rounded-xl border bg-white p-4"><p className="text-xs text-gray-500">{k}</p><p className="text-2xl font-semibold text-slate-800">{Number(v||0)}</p></div>)}</div>
-      <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-xl border bg-white p-4"><p className="font-medium mb-2">Recent contacts</p>{asArray(data?.recentContacts).slice(0,5).map((c:any, idx:number)=><div key={c?.id ?? `recent-contact-${idx}`}><Link className="underline" href={`/seller/crm/contacts/${c?.id}`}>{safeText(c?.full_name, "Unnamed contact")}</Link></div>)}</div><div className="rounded-xl border bg-white p-4"><p className="font-medium mb-2">Recent activities</p>{asArray(data?.recentActivities).slice(0,5).map((a:any, idx:number)=><div key={a?.id ?? `recent-activity-${idx}`} className="text-sm">{safeText(a?.title)} • {formatDateSafe(a?.created_at)}</div>)}</div></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
+        ["Total Contacts", data?.totalContacts],["New Contacts",data?.newContacts],["Hot Leads",data?.hotLeads],["Due Today",data?.followupsDueToday],["Overdue",data?.overdueFollowups],["Open Deals", data?.openDeals],["Converted", data?.convertedContacts],["Lost", data?.lostContacts]
+      ].map(([k,v])=><div key={String(k)} className="rounded-xl border bg-white p-4 shadow-sm"><p className="text-xs text-gray-500">{k}</p><p className="text-2xl font-semibold text-slate-800">{Number(v||0)}</p></div>)}</div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[
+        ["/seller/crm/contacts","View Contacts"],["/dashboard/leads","View Leads"],["/seller/crm/followups","Add Follow-up"],["/seller/crm/settings","CRM Settings"],["/seller/crm/activities","Activities"],["/seller/crm/deals","Deals"]
+      ].map(([href,label])=><Link key={String(href)} href={String(href)} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100">{label}</Link>)}</div>
+      <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-xl border bg-white p-4"><p className="font-medium mb-2">Recent contacts</p>{asArray(data?.recentContacts).length===0?<p className="text-sm text-slate-500">No CRM contacts yet. New property enquiries will automatically appear here.</p>:asArray(data?.recentContacts).slice(0,5).map((c:any, idx:number)=><div key={c?.id ?? `recent-contact-${idx}`} className="rounded-lg border border-slate-100 bg-slate-50 p-2 mb-2"><Link className="font-medium text-slate-800 hover:underline" href={`/seller/crm/contacts/${c?.id}`}>{safeText(c?.full_name, "Unnamed contact")}</Link></div>)}</div><div className="rounded-xl border bg-white p-4"><p className="font-medium mb-2">Recent activities</p>{asArray(data?.recentActivities).length===0?<p className="text-sm text-slate-500">No CRM activity yet.</p>:asArray(data?.recentActivities).slice(0,5).map((a:any, idx:number)=><div key={a?.id ?? `recent-activity-${idx}`} className="mb-2 rounded-lg border border-slate-100 bg-slate-50 p-2 text-sm">{safeText(a?.title)} • {formatDateSafe(a?.created_at)}</div>)}</div></div>
     </div>}
 
     {!loading && mode==="contact-detail" && data && <div className="space-y-3">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { uploadPropertyMedia } from "@/lib/storage/uploadImage";
 import { buildPropertySeoFields } from "@/lib/seo/propertySeo";
+import DashboardPageHeader from "@/components/ui/DashboardPageHeader";
 
 const supabase = createClient();
 
@@ -583,11 +584,8 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
   return (
 
-    <main className="container-custom py-10">
-
-      <h1 className="text-3xl font-semibold mb-8">
-        List Your Property
-      </h1>
+    <main className="container-custom py-10 space-y-8">
+      <DashboardPageHeader title="List Your Property" description="Create a high-quality listing with complete details and media." showBackToDashboard />
 
       <div className="grid grid-cols-12 gap-8">
 
