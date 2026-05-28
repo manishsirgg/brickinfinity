@@ -18,6 +18,7 @@ export default function LeadsPage() {
   const [totalCount,setTotalCount] = useState(0);
   const [actionLoading,setActionLoading] =
     useState<string | null>(null);
+  const [crmMap,setCrmMap] = useState<Record<string,string>>({});
 
   /* ================= FETCH LEADS ================= */
 
@@ -87,6 +88,14 @@ export default function LeadsPage() {
 
       setLeads(filtered);
       setTotalCount(filtered.length);
+      const phoneKeys = new Set<string>();
+      const emailKeys = new Set<string>();
+      filtered.forEach((l:any)=>{ if(l.buyer_phone) phoneKeys.add(String(l.buyer_phone).replace(/\D/g,"")); if(l.buyer_email) emailKeys.add(String(l.buyer_email).toLowerCase()); });
+      const { data: contacts } = await supabase.from("seller_crm_contacts").select("id,phone,email").eq("seller_id", sellerId);
+      const map: Record<string,string> = {};
+      (contacts||[]).forEach((c:any)=>{ const p=(c.phone||"").replace(/\D/g,""); const e=(c.email||"").toLowerCase(); if(p) map[`p:${p}`]=c.id; if(e) map[`e:${e}`]=c.id; });
+      setCrmMap(map);
+
 
     }catch(err){
 
@@ -196,6 +205,8 @@ export default function LeadsPage() {
             ? `https://wa.me/91${lead.buyer_phone.replace(/\D/g,"")}`
             : null;
 
+          const crmId = (lead.buyer_phone ? crmMap[`p:${String(lead.buyer_phone).replace(/\D/g,"")}`] : undefined) || (lead.buyer_email ? crmMap[`e:${String(lead.buyer_email).toLowerCase()}`] : undefined);
+
           const hoursAgo =
             Math.floor(
               (Date.now() -
@@ -293,6 +304,8 @@ export default function LeadsPage() {
               {/* ACTIONS */}
 
               <div className="flex flex-wrap gap-3">
+
+                {crmId && (<Link href={`/seller/crm/contacts/${crmId}`} className="text-xs underline">Open in CRM</Link>)}
 
                 {whatsappLink && (
 

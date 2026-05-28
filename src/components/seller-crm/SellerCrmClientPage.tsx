@@ -32,6 +32,8 @@ export function SellerCrmClientPage({ title, mode = "overview", id }: { title: s
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<Record<string, any>>({});
+  const [contactFilters, setContactFilters] = useState<any>({ q:"", lifecycle_stage:"", lead_temperature:"", source:"", archived:"active", sort:"newest" });
+  const [activityFilters, setActivityFilters] = useState<any>({ activity_type:"", channel:"", q:"" });
 
   const load = async () => {
     setLoading(true);
@@ -43,11 +45,11 @@ export function SellerCrmClientPage({ title, mode = "overview", id }: { title: s
           : mode === "deal-detail"
             ? `/api/seller/crm/deals/${id}`
             : mode === "activities"
-              ? "/api/seller/crm/activities"
+              ? `/api/seller/crm/activities?${new URLSearchParams(Object.fromEntries(Object.entries(activityFilters).filter(([k,v])=>String(v??"")!=="" && k!=="q")) as Record<string,string>).toString()}`
               : mode === "settings"
                 ? "/api/seller/crm/settings"
                 : mode === "contacts"
-                  ? "/api/seller/crm/contacts"
+                  ? `/api/seller/crm/contacts?${new URLSearchParams(Object.fromEntries(Object.entries(contactFilters).filter(([_,v])=>String(v??"")!=="")) as Record<string,string>).toString()}`
                   : mode === "deals"
                     ? "/api/seller/crm/deals"
                     : mode === "followups"
@@ -91,7 +93,7 @@ export function SellerCrmClientPage({ title, mode = "overview", id }: { title: s
 
   useEffect(() => {
     load();
-  }, [mode, id]);
+  }, [mode, id, JSON.stringify(contactFilters), JSON.stringify(activityFilters)]);
 
   const action = async (url: string, method: string, body: any, keepOpenOnFail = true) => {
     setSaving(true);
@@ -125,6 +127,17 @@ export function SellerCrmClientPage({ title, mode = "overview", id }: { title: s
     };
   }, [data, mode]);
 
+
+  const logAndOpen = (contact: any, type: "call"|"whatsapp"|"email") => {
+    const phone = contact?.phone || "";
+    const whatsapp = normalizeIndianWhatsApp(contact?.whatsapp_number || phone);
+    const email = contact?.email || "";
+    if (type === "call" && phone) window.open(`tel:${phone}`, "_self");
+    if (type === "whatsapp" && whatsapp) window.open(`https://wa.me/${whatsapp}`, "_blank", "noopener,noreferrer");
+    if (type === "email" && email) window.open(`mailto:${email}`, "_self");
+    fetch("/api/seller/crm/activities/log-action", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ contact_id: contact.id, channel: type, activity_type: type }) }).catch(()=>{});
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-4">
       <h1 className="text-2xl font-bold">{title}</h1>
@@ -144,7 +157,7 @@ export function SellerCrmClientPage({ title, mode = "overview", id }: { title: s
         </div>
         {Number(data?.dashboard?.total_contacts ?? 0) === 0 ? <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">No CRM contacts yet. New property enquiries will automatically appear here.</div> : null}
       </div>}
-      {!loading && mode === "contacts" && <div className="space-y-2">{(data || []).length ? (data || []).map((c: any) => <div key={c.id} className="border rounded p-3 text-sm flex items-center justify-between gap-2"><div><Link href={`/seller/crm/contacts/${c.id}`} className="font-semibold hover:underline">{c.full_name}</Link><div className="text-gray-600">{c.phone || c.email || "No phone/email"} • {humanize(c.lifecycle_stage)}</div><div className="mt-1 flex flex-wrap gap-3">{c.phone ? <a className="underline" href={`tel:${c.phone}`}>Call</a> : null}{normalizeIndianWhatsApp(c.whatsapp_number || c.phone) ? <a className="underline" href={`https://wa.me/${normalizeIndianWhatsApp(c.whatsapp_number || c.phone)}`} target="_blank">WhatsApp</a> : null}{c.email ? <a className="underline" href={`mailto:${c.email}`}>Email</a> : null}{lastPropertyIdFromContact(c) ? <Link className="underline" href={`/property/${lastPropertyIdFromContact(c)}`}>View Property</Link> : null}</div></div><button className="border rounded px-2 py-1" disabled={saving} onClick={() => action(`/api/seller/crm/contacts/${c.id}`, "PATCH", { is_archived: !c.is_archived })}>{c.is_archived ? "Restore" : "Archive"}</button></div>) : <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">No contacts yet.</div>}</div>}
+      {!loading && mode === "contacts" && <div className="space-y-3"><div className="grid md:grid-cols-6 gap-2"><input className="border rounded px-2 py-1 text-sm" placeholder="Search name/phone/email" value={contactFilters.q} onChange={(e)=>setContactFilters((s:any)=>({...s,q:e.target.value}))}/><select className="border rounded px-2 py-1 text-sm" value={contactFilters.lifecycle_stage} onChange={(e)=>setContactFilters((s:any)=>({...s,lifecycle_stage:e.target.value}))}><option value="">All stages</option>{["new","contacted","qualified","site_visit","negotiation","converted","lost","archived"].map(v=><option key={v} value={v}>{humanize(v)}</option>)}</select><select className="border rounded px-2 py-1 text-sm" value={contactFilters.lead_temperature} onChange={(e)=>setContactFilters((s:any)=>({...s,lead_temperature:e.target.value}))}><option value="">All temp</option>{["cold","warm","hot"].map(v=><option key={v} value={v}>{humanize(v)}</option>)}</select><input className="border rounded px-2 py-1 text-sm" placeholder="Source" value={contactFilters.source} onChange={(e)=>setContactFilters((s:any)=>({...s,source:e.target.value}))}/><select className="border rounded px-2 py-1 text-sm" value={contactFilters.archived} onChange={(e)=>setContactFilters((s:any)=>({...s,archived:e.target.value}))}><option value="active">Active only</option><option value="archived">Archived only</option><option value="all">All</option></select><select className="border rounded px-2 py-1 text-sm" value={contactFilters.sort} onChange={(e)=>setContactFilters((s:any)=>({...s,sort:e.target.value}))}><option value="newest">Newest</option><option value="updated">Recently updated</option><option value="name">Name</option></select></div>{(data || []).length ? (data || []).map((c: any) => <div key={c.id} className="border rounded p-3 text-sm flex items-center justify-between gap-2"><div><Link href={`/seller/crm/contacts/${c.id}`} className="font-semibold hover:underline">{c.full_name}</Link><div className="text-gray-600">{c.phone || "-"} • {c.email || "-"}</div><div className="text-gray-600">{humanize(c.lifecycle_stage)} • {humanize(c.lead_temperature)} • {c.source || "Unknown"}</div><div className="text-xs text-gray-500">Created {formatDateTime(c.created_at)} • Updated {formatDateTime(c.updated_at)}</div><div className="mt-1 flex flex-wrap gap-3"><button className="underline" onClick={()=>logAndOpen(c,"call")}>Call</button><button className="underline" onClick={()=>logAndOpen(c,"whatsapp")}>WhatsApp</button><button className="underline" onClick={()=>logAndOpen(c,"email")}>Email</button>{lastPropertyIdFromContact(c) ? <Link className="underline" href={`/property/${lastPropertyIdFromContact(c)}`}>View Property</Link> : null}</div></div><button className="border rounded px-2 py-1" disabled={saving} onClick={() => action(`/api/seller/crm/contacts/${c.id}`, "PATCH", { is_archived: !c.is_archived })}>{c.is_archived ? "Unarchive" : "Archive"}</button></div>) : <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">No contacts yet.</div>}</div>}
       {!loading && mode === "deals" && <div className="space-y-2">{(data || []).length ? (data || []).map((d: any) => <div key={d.id} className="border rounded p-3 text-sm flex items-center justify-between gap-2"><div><Link href={`/seller/crm/deals/${d.id}`} className="font-semibold hover:underline">{d.title}</Link><div className="text-gray-600">{inr(d.expected_value)} • <SellerCrmStageBadge value={d.deal_stage} /></div></div></div>) : <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">No deals yet.</div>}</div>}
       {!loading && mode === "followups" && <div className="grid gap-4 md:grid-cols-2">{Object.entries(followupBuckets).map(([k, items]) => <div key={k} className="border rounded p-3"><div className="font-semibold mb-2">{humanize(k)}</div><div className="space-y-2">{(items as any[]).length ? (items as any[]).map((f) => <div key={f.id} className="text-sm border rounded p-2">{f.title} • {formatDateTime(f.due_at)} • <SellerCrmStatusBadge value={f.status} /></div>) : <p className="text-sm text-gray-500">No {humanize(k).toLowerCase()} follow-ups.</p>}</div></div>)}</div>}
 
