@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
+import DashboardPageHeader from "@/components/ui/DashboardPageHeader";
 
 const supabase = createClient();
 
@@ -166,9 +167,13 @@ export default function LeadsPage() {
 
     <main className="container-custom py-12 md:py-20">
 
-      <h1 className="text-2xl md:text-3xl font-semibold mb-10 md:mb-12">
-        My Leads
-      </h1>
+      <div className="mb-8">
+        <DashboardPageHeader
+          title="Dashboard Leads"
+          description="Leads is your lightweight inbox for fresh enquiries. Move qualified prospects into CRM for deeper follow-up management."
+          showBackToDashboard
+        />
+      </div>
 
       {leads.length === 0 && (
 

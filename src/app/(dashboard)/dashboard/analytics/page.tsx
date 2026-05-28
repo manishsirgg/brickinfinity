@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
 import Link from "next/link";
+import DashboardPageHeader from "@/components/ui/DashboardPageHeader";
 
 const supabase = createClient();
 
@@ -256,9 +257,7 @@ export default function SellerDashboard() {
 
     <main className="container-custom py-12 md:py-20 space-y-12">
 
-      <h1 className="text-2xl md:text-3xl font-semibold">
-        Seller Analytics
-      </h1>
+      <DashboardPageHeader title="Seller Analytics" description="Track listing views, lead flow, and portfolio performance trends." showBackToDashboard />
 
       {/* STATS */}
 

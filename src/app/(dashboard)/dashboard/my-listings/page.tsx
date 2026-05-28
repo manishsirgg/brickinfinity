@@ -7,6 +7,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { useRouter } from "next/navigation";
 import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
+import DashboardPageHeader from "@/components/ui/DashboardPageHeader";
 
 const supabase = createClient();
 
@@ -243,17 +244,12 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
 
     <main className="container-custom py-12 md:py-20 space-y-12">
 
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-
-        <h1 className="text-2xl md:text-3xl font-semibold">
-          My Listings
-        </h1>
-
-        <Button href="/dashboard/add-property">
-          + Add Property
-        </Button>
-
-      </div>
+      <DashboardPageHeader
+        title="My Listings"
+        description="Review, edit, and promote your listings from one place."
+        showBackToDashboard
+        actions={<Button href="/dashboard/add-property">+ Add Property</Button>}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 md:gap-6">
 
