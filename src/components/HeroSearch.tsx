@@ -91,12 +91,12 @@ export default function HeroSearch() {
     if (selectedStateName) params.set("state", selectedStateName);
     if (selectedCityName) params.set("city", selectedCityName);
     if (q) params.set("search", q);
-    if (propertyType) params.set("propertyType", propertyType);
-    if (min) params.set("minPrice", min);
-    if (max) params.set("maxPrice", max);
+    if (propertyType) params.set("property_type", propertyType);
+    if (min) params.set("min_price", min);
+    if (max) params.set("max_price", max);
     if (bedrooms) params.set("bedrooms", bedrooms);
 
-    params.set("listingType", listingType);
+    params.set("listing_type", listingType);
     const url = params.toString() ? `/properties?${params.toString()}` : "/properties";
 
     router.push(url);
