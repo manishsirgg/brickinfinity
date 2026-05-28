@@ -105,7 +105,7 @@ export default function PropertyCard({ property }: Props) {
   return (
     <Link
       href={propertyUrl}
-      className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition duration-300 group block"
+      className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-xl transition duration-300 group block h-full"
     >
       <div className="relative overflow-hidden">
         <img
@@ -149,7 +149,7 @@ export default function PropertyCard({ property }: Props) {
         )}
       </div>
 
-      <div className="p-5 space-y-3">
+      <div className="p-4 md:p-5 space-y-3">
         <div>
           <p className="text-xl font-bold text-primary">
             ₹ {formattedPrice}
@@ -168,7 +168,7 @@ export default function PropertyCard({ property }: Props) {
         </div>
 
         {propertyType && (
-          <p className="font-semibold text-[var(--color-dark)]">
+          <p className="font-semibold text-[var(--color-dark)] line-clamp-2">
             {propertyType}
           </p>
         )}
