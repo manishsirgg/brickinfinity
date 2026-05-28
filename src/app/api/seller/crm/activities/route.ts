@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
     const contactIds = Array.from(new Set(rows.map((r:any)=>r.contact_id).filter(Boolean)));
     const { data: contacts } = contactIds.length ? await c.supabase.from("seller_crm_contacts").select("id,full_name").eq("seller_id",c.sellerId).in("id", contactIds) : {data:[] as any[]};
     const map = new Map((contacts||[]).map((x:any)=>[x.id,x.full_name]));
-    return NextResponse.json({ ok: true, data: rows.map((r:any)=>({ ...r, contact_name: r.contact_id ? (map.get(r.contact_id) || null) : null })) });
+    const activities = rows.map((r:any)=>({ ...r, contact_name: r.contact_id ? (map.get(r.contact_id) || null) : null }));
+    return NextResponse.json({ ok: true, data: activities, activities });
   } catch (e) {
     console.error("[seller-crm/activities]", e);
     return NextResponse.json({ ok: false, error: "Unexpected error" }, { status: 500 });
