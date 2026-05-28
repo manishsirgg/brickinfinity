@@ -267,7 +267,23 @@ export default function NavbarClient({ user }: NavbarClientProps) {
                         <Link
                           key={item.id}
                           href={item.link_url || "/dashboard/notifications"}
-                          onClick={() => setNotificationOpen(false)}
+                          onClick={async () => {
+                            if (!item.is_read) {
+                              try {
+                                const response = await fetch(`/api/notifications/${item.id}/read`, { method: "POST" });
+                                const payload = await response.json() as { success?: boolean };
+                                if (response.ok && payload.success) {
+                                  setUnreadCount((prev) => Math.max(0, prev - 1));
+                                  setNotifications((prev) =>
+                                    prev.map((entry) => (entry.id === item.id ? { ...entry, is_read: true } : entry))
+                                  );
+                                }
+                              } catch {
+                                // Intentionally ignore mark-read errors so navigation is not blocked.
+                              }
+                            }
+                            setNotificationOpen(false);
+                          }}
                           className={`block px-4 py-3 border-b border-gray-50 hover:bg-gray-50 ${item.is_read ? "bg-white" : "bg-red-50/40"}`}
                         >
                           <div className="flex items-start justify-between gap-2">
