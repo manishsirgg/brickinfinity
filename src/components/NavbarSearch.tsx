@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function NavbarSearch() {
+type NavbarSearchProps = {
+  onSearchSubmit?: () => void;
+};
+
+export default function NavbarSearch({ onSearchSubmit }: NavbarSearchProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
 
@@ -15,6 +19,7 @@ export default function NavbarSearch() {
     if (value) params.set("search", value);
 
     router.push(params.toString() ? `/properties?${params.toString()}` : "/properties");
+    onSearchSubmit?.();
     setQuery("");
   }
 

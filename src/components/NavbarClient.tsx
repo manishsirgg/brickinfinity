@@ -186,7 +186,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
 
         {/* CENTER SEARCH */}
         <div className="hidden lg:flex flex-1 justify-center px-4 min-w-0">
-          <NavbarSearch />
+          <NavbarSearch onSearchSubmit={() => setMobileOpen(false)} />
         </div>
 
         {/* RIGHT */}
@@ -397,7 +397,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
         }`}
       >
         <div className="p-6 space-y-6 text-sm font-medium overflow-y-auto h-full">
-          <NavbarSearch />
+          <NavbarSearch onSearchSubmit={() => setMobileOpen(false)} />
           {user && role !== USER_ROLES.ADMIN && (
             <Link
               href="/property/dashboard/saved-properties"

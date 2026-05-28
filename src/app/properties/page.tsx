@@ -8,7 +8,16 @@ type Props = {
   searchParams?: {
     search?: string;
     propertyType?: string;
+    property_type?: string;
     listingType?: string;
+    listing_type?: string;
+    city?: string;
+    state?: string;
+    bedrooms?: string;
+    minPrice?: string;
+    min_price?: string;
+    maxPrice?: string;
+    max_price?: string;
     page?: string;
   };
 };
@@ -27,8 +36,13 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
   const supabase = createServiceClient();
   const rawSearch = cleanString(searchParams.search);
   const keyword = sanitizeSearchTerm(rawSearch);
-  const propertyType = cleanString(searchParams.propertyType);
-  const listingType = cleanString(searchParams.listingType);
+  const propertyType = cleanString(searchParams.property_type ?? searchParams.propertyType);
+  const listingType = cleanString(searchParams.listing_type ?? searchParams.listingType);
+  const city = cleanString(searchParams.city);
+  const state = cleanString(searchParams.state);
+  const bedrooms = cleanString(searchParams.bedrooms);
+  const minPrice = Number(cleanString(searchParams.min_price ?? searchParams.minPrice));
+  const maxPrice = Number(cleanString(searchParams.max_price ?? searchParams.maxPrice));
   const currentPage = Math.max(1, Number(searchParams.page || "1") || 1);
   const from = (currentPage - 1) * pageSize;
   const to = from + pageSize - 1;
@@ -43,8 +57,25 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
     .eq("verification_status", "approved")
     .is("deleted_at", null);
 
+  let stateId: string | undefined;
+  if (state) {
+    const { data } = await supabase.from("states").select("id").ilike("name", state).maybeSingle();
+    stateId = data?.id;
+  }
+
+  let cityId: string | undefined;
+  if (city) {
+    const { data } = await supabase.from("cities").select("id").ilike("name", city).maybeSingle();
+    cityId = data?.id;
+  }
+
   if (listingType === "Sale" || listingType === "Rent") query = query.eq("listing_type", listingType);
   if (propertyType) query = query.eq("property_type", propertyType);
+  if (bedrooms && Number.isFinite(Number(bedrooms))) query = query.eq("bedrooms", Number(bedrooms));
+  if (Number.isFinite(minPrice) && minPrice > 0) query = query.gte("price", minPrice);
+  if (Number.isFinite(maxPrice) && maxPrice > 0) query = query.lte("price", maxPrice);
+  if (cityId) query = query.eq("city_id", cityId);
+  else if (stateId) query = query.eq("cities.state_id", stateId);
   if (keyword) {
     query = query.or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%,address.ilike.%${keyword}%,location.ilike.%${keyword}%,property_type.ilike.%${keyword}%,listing_type.ilike.%${keyword}%,cities.name.ilike.%${keyword}%,localities.name.ilike.%${keyword}%`);
   }
@@ -62,7 +93,7 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
   return (
     <main className="container-custom py-12 md:py-16 space-y-10">
       <header className="space-y-2">
-        <h1 className="text-2xl md:text-3xl font-semibold">Property Results</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold">{keyword ? `Search results for “${keyword}”` : "Property Results"}</h1>
         <p className="text-sm text-muted">{count || 0} verified properties found.</p>
       </header>
 
