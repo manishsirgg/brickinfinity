@@ -53,6 +53,11 @@ export default function Footer() {
 
             <ul className="space-y-3 md:space-y-4 text-sm text-white/70">
               <li>
+                <Link href="/about" className="hover:text-white transition-colors duration-200">
+                  About Brick Infinity
+                </Link>
+              </li>
+              <li>
                 <Link href="/properties/buy" className="hover:text-white transition-colors duration-200">
                   Buy Properties
                 </Link>
