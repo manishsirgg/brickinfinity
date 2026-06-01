@@ -94,32 +94,12 @@ function buildKeywordOr(terms: string[]) {
       `description.ilike.%${pattern}%`,
       `address.ilike.%${pattern}%`,
       `location.ilike.%${pattern}%`,
+      `slug.ilike.%${pattern}%`,
       `property_type.ilike.%${pattern}%`,
       `listing_type.ilike.%${pattern}%`,
       `cities.name.ilike.%${pattern}%`,
       `localities.name.ilike.%${pattern}%`,
     ];
-  });
-
-  return Array.from(new Set(conditions)).join(",");
-}
-
-function buildPropertyTypeIntentOr(propertyTypes: string[], terms: string[]) {
-  const conditions = propertyTypes.map((type) => `property_type.eq.${type}`);
-
-  terms.forEach((term) => {
-    const pattern = toSupabasePattern(term);
-    if (!pattern) return;
-
-    conditions.push(
-      `title.ilike.%${pattern}%`,
-      `description.ilike.%${pattern}%`,
-      `address.ilike.%${pattern}%`,
-      `location.ilike.%${pattern}%`,
-      `property_type.ilike.%${pattern}%`,
-      `cities.name.ilike.%${pattern}%`,
-      `localities.name.ilike.%${pattern}%`,
-    );
   });
 
   return Array.from(new Set(conditions)).join(",");
@@ -213,23 +193,31 @@ export default async function PropertiesSearchPage({
   if (cityId) query = query.eq("city_id", cityId);
   else if (stateId) query = query.eq("cities.state_id", stateId);
   if (keyword) {
-    if (inferredPropertyType) {
-      const propertyTypeOr = buildPropertyTypeIntentOr(
-        inferredPropertyType.propertyTypes,
-        [
-          normalizedSearch,
-          ...inferredPropertyType.aliases,
-          ...inferredPropertyType.propertyTypes,
-        ],
-      );
-      if (propertyTypeOr) query = query.or(propertyTypeOr);
-    } else {
-      const keywordTerms = normalizedSearch
-        ? getSearchAliases(keyword)
-        : [keyword];
-      const keywordOr = buildKeywordOr(keywordTerms);
-      if (keywordOr) query = query.or(keywordOr);
+    const keywordTerms = normalizedSearch
+      ? getSearchAliases(keyword)
+      : [keyword];
+    const keywordOr = buildKeywordOr(keywordTerms);
+
+    if (process.env.NODE_ENV === "development") {
+      console.debug("[properties-search]", {
+        normalizedSearch,
+        propertyTypeIntent: propertyTypeIntent?.key ?? null,
+        listingTypeIntent: listingTypeIntent?.key ?? null,
+        aliases: keywordTerms,
+        explicitFilters: {
+          propertyType: propertyType ?? null,
+          listingType: listingType ?? null,
+          city: city ?? null,
+          state: state ?? null,
+          bedrooms: bedrooms ?? null,
+          minPrice: Number.isFinite(minPrice) && minPrice > 0 ? minPrice : null,
+          maxPrice: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : null,
+        },
+        keywordOr,
+      });
     }
+
+    if (keywordOr) query = query.or(keywordOr);
   }
 
   const { data, count } = await query
@@ -241,6 +229,8 @@ export default async function PropertiesSearchPage({
     .range(from, to);
 
   const results = data ? sortFeaturedPropertiesFirst(data) : [];
+  const totalMatches = count ?? results.length;
+  const showNoResultSuggestions = totalMatches === 0;
   const pageHeading = keyword
     ? `Search results for “${keyword}”`
     : propertyTypeDisplayName
@@ -266,7 +256,7 @@ export default async function PropertiesSearchPage({
         <div className="space-y-2">
           <h1 className="text-2xl md:text-3xl font-semibold">{pageHeading}</h1>
           <p className="text-sm text-muted">
-            {count || 0} verified properties found.
+            {totalMatches} verified properties found.
           </p>
         </div>
 
@@ -288,25 +278,31 @@ export default async function PropertiesSearchPage({
         <div className="text-center py-16 px-6 border rounded-xl bg-white space-y-5">
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-gray-900">
-              {keyword
-                ? `No matching properties found for “${keyword}”.`
-                : "No properties found."}
+              {showNoResultSuggestions
+                ? keyword
+                  ? `No matching properties found for “${keyword}”.`
+                  : "No properties found."
+                : "No properties found on this page."}
             </h2>
             <p className="text-muted">
-              Try a different property type, listing type, city, or locality.
+              {showNoResultSuggestions
+                ? "Try a different property type, listing type, city, or locality."
+                : "Try returning to the first page or adjusting your filters."}
             </p>
           </div>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            {noResultSuggestions.map((suggestion) => (
-              <Link
-                key={suggestion.label}
-                className={suggestionLinkClass}
-                href={suggestion.href}
-              >
-                {suggestion.label}
-              </Link>
-            ))}
-          </div>
+          {showNoResultSuggestions && (
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              {noResultSuggestions.map((suggestion) => (
+                <Link
+                  key={suggestion.label}
+                  className={suggestionLinkClass}
+                  href={suggestion.href}
+                >
+                  {suggestion.label}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

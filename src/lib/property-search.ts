@@ -24,13 +24,24 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
   {
     key: "plot",
     label: "Plot / Land",
-    propertyTypes: ["Plot"],
-    aliases: ["plot", "plots", "land", "residential plot", "commercial plot", "land parcel"],
+    propertyTypes: ["Plot", "Land", "Residential Plot", "Commercial Plot", "Land/Plot"],
+    aliases: [
+      "plot",
+      "plots",
+      "land",
+      "lands",
+      "residential plot",
+      "residential plots",
+      "commercial plot",
+      "commercial plots",
+      "land parcel",
+      "land parcels",
+    ],
   },
   {
     key: "commercial",
     label: "Commercial Space",
-    propertyTypes: ["Commercial"],
+    propertyTypes: ["Commercial", "Office", "Shop", "Showroom"],
     aliases: [
       "shop",
       "shops",
@@ -40,16 +51,18 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
       "offices",
       "commercial",
       "commercial space",
+      "commercial spaces",
       "retail",
       "store",
       "stores",
       "business space",
+      "business spaces",
     ],
   },
   {
     key: "apartment",
     label: "Apartment / Flat",
-    propertyTypes: ["Apartment"],
+    propertyTypes: ["Apartment", "Flat"],
     aliases: ["apartment", "apartments", "flat", "flats"],
   },
   {
@@ -67,7 +80,7 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
   {
     key: "residential",
     label: "Residential Home",
-    propertyTypes: ["Apartment", "House", "Villa"],
+    propertyTypes: ["Apartment", "House", "Villa", "Flat"],
     aliases: ["residential", "residential property", "residential properties"],
   },
 ];
