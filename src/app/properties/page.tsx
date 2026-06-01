@@ -10,6 +10,8 @@ import {
 import Link from "next/link";
 
 const pageSize = 12;
+const suggestionLinkClass =
+  "rounded-full border border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
 
 type PropertiesSearchParams = {
   search?: string;
@@ -198,11 +200,22 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
             </h2>
             <p className="text-muted">Try a different property type, listing type, city, or locality.</p>
           </div>
-          <div className="flex flex-wrap justify-center gap-3 text-sm">
-            <Link className="rounded-full border border-border px-4 py-2 hover:bg-surface" href="/properties?search=commercial">Try Commercial Space</Link>
-            <Link className="rounded-full border border-border px-4 py-2 hover:bg-surface" href="/properties?search=rent">Try Rent</Link>
-            <Link className="rounded-full border border-border px-4 py-2 hover:bg-surface" href="/properties?search=buy">Try Buy</Link>
-            <Link className="rounded-full border border-border px-4 py-2 hover:bg-surface" href="/properties/latest">Try Latest Listings</Link>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              className={suggestionLinkClass}
+              href={{ pathname: "/properties", query: { search: "commercial" } }}
+            >
+              Try Commercial Space
+            </Link>
+            <Link className={suggestionLinkClass} href="/properties/rent">
+              Try Rent
+            </Link>
+            <Link className={suggestionLinkClass} href="/properties/buy">
+              Try Buy
+            </Link>
+            <Link className={suggestionLinkClass} href="/properties/latest">
+              Try Latest Listings
+            </Link>
           </div>
         </div>
       )}
