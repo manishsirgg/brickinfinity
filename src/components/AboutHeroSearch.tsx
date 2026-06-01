@@ -10,14 +10,11 @@ export default function AboutHeroSearch() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedQuery = query.trim();
+    const trimmedQuery = query.replace(/\s+/g, " ").trim();
+    const params = new URLSearchParams();
+    if (trimmedQuery) params.set("search", trimmedQuery);
 
-    if (!trimmedQuery) {
-      router.push("/properties");
-      return;
-    }
-
-    router.push(`/properties?search=${encodeURIComponent(trimmedQuery)}`);
+    router.push(params.toString() ? `/properties?${params.toString()}` : "/properties");
   }
 
   return (
