@@ -24,7 +24,16 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
   {
     key: "plot",
     label: "Plot / Land",
-    propertyTypes: ["Plot", "Land", "Residential Plot", "Commercial Plot", "Land/Plot"],
+    propertyTypes: [
+      "Plot",
+      "Land",
+      "Residential Plot",
+      "Commercial Plot",
+      "Land/Plot",
+      "land_plot",
+      "commercial_plot",
+      "residential_plot",
+    ],
     aliases: [
       "plot",
       "plots",
@@ -36,6 +45,12 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
       "commercial plots",
       "land parcel",
       "land parcels",
+      "land plot",
+      "land plots",
+      "land/plot",
+      "land_plot",
+      "commercial_plot",
+      "residential_plot",
     ],
   },
   {
@@ -57,6 +72,8 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
       "stores",
       "business space",
       "business spaces",
+      "commercial_property",
+      "commercial property",
     ],
   },
   {
