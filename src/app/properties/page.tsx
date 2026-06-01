@@ -15,22 +15,22 @@ const suggestionLinkClass =
 
 const noResultSuggestions = [
   {
-    label: "Try Commercial Space",
+    label: "View Commercial Spaces",
     href: {
       pathname: "/properties",
-      query: { search: "commercial" },
+      query: { property_type: "Commercial" },
     },
   },
   {
-    label: "Try Rent",
+    label: "View Rent Properties",
     href: "/properties/rent",
   },
   {
-    label: "Try Buy",
+    label: "View Buy Properties",
     href: "/properties/buy",
   },
   {
-    label: "Try Latest Listings",
+    label: "View Latest Listings",
     href: "/properties/latest",
   },
 ];
@@ -59,14 +59,29 @@ function cleanString(value?: string) {
   return value?.trim() || undefined;
 }
 
+function getPropertyTypeDisplayName(value?: string) {
+  if (!value) return undefined;
+  if (value === "Commercial") return "Commercial Space";
+  return value;
+}
+
 function sanitizeSearchTerm(value?: string) {
   if (!value) return undefined;
-  const cleaned = value.replace(/[,%()]/g, " ").replace(/[%_]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const cleaned = value
+    .replace(/[,%()]/g, " ")
+    .replace(/[%_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
   return cleaned || undefined;
 }
 
 function toSupabasePattern(value: string) {
-  return value.replace(/[,%()]/g, " ").replace(/[%_]/g, "").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[,%()]/g, " ")
+    .replace(/[%_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildKeywordOr(terms: string[]) {
@@ -103,31 +118,53 @@ function buildPropertyTypeIntentOr(propertyTypes: string[], terms: string[]) {
       `location.ilike.%${pattern}%`,
       `property_type.ilike.%${pattern}%`,
       `cities.name.ilike.%${pattern}%`,
-      `localities.name.ilike.%${pattern}%`
+      `localities.name.ilike.%${pattern}%`,
     );
   });
 
   return Array.from(new Set(conditions)).join(",");
 }
 
-export default async function PropertiesSearchPage({ searchParams = {} }: Props) {
+export default async function PropertiesSearchPage({
+  searchParams = {},
+}: Props) {
   const supabase = createServiceClient();
   const resolvedSearchParams = await searchParams;
   const rawSearch = cleanString(resolvedSearchParams.search);
   const keyword = sanitizeSearchTerm(rawSearch);
   const normalizedSearch = normalizeSearchTerm(keyword || "");
-  const propertyType = cleanString(resolvedSearchParams.property_type ?? resolvedSearchParams.propertyType);
-  const listingType = cleanString(resolvedSearchParams.listing_type ?? resolvedSearchParams.listingType);
-  const propertyTypeIntent = keyword ? getPropertyTypeSearchIntent(keyword) : null;
-  const listingTypeIntent = keyword ? getListingTypeSearchIntent(keyword) : null;
+  const propertyType = cleanString(
+    resolvedSearchParams.property_type ?? resolvedSearchParams.propertyType,
+  );
+  const listingType = cleanString(
+    resolvedSearchParams.listing_type ?? resolvedSearchParams.listingType,
+  );
+  const propertyTypeIntent = keyword
+    ? getPropertyTypeSearchIntent(keyword)
+    : null;
+  const listingTypeIntent = keyword
+    ? getListingTypeSearchIntent(keyword)
+    : null;
   const inferredPropertyType = !propertyType ? propertyTypeIntent : null;
   const inferredListingType = !listingType ? listingTypeIntent : null;
   const city = cleanString(resolvedSearchParams.city);
   const state = cleanString(resolvedSearchParams.state);
   const bedrooms = cleanString(resolvedSearchParams.bedrooms);
-  const minPrice = Number(cleanString(resolvedSearchParams.min_price ?? resolvedSearchParams.minPrice));
-  const maxPrice = Number(cleanString(resolvedSearchParams.max_price ?? resolvedSearchParams.maxPrice));
-  const currentPage = Math.max(1, Number(resolvedSearchParams.page || "1") || 1);
+  const minPrice = Number(
+    cleanString(
+      resolvedSearchParams.min_price ?? resolvedSearchParams.minPrice,
+    ),
+  );
+  const maxPrice = Number(
+    cleanString(
+      resolvedSearchParams.max_price ?? resolvedSearchParams.maxPrice,
+    ),
+  );
+  const propertyTypeDisplayName = getPropertyTypeDisplayName(propertyType);
+  const currentPage = Math.max(
+    1,
+    Number(resolvedSearchParams.page || "1") || 1,
+  );
   const from = (currentPage - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -135,7 +172,7 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
     .from("properties")
     .select(
       `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,cities(name),localities(name),property_images(image_url)`,
-      { count: "exact" }
+      { count: "exact" },
     )
     .eq("status", "active")
     .eq("verification_status", "approved")
@@ -143,23 +180,36 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
 
   let stateId: string | undefined;
   if (state) {
-    const { data } = await supabase.from("states").select("id").ilike("name", state).maybeSingle();
+    const { data } = await supabase
+      .from("states")
+      .select("id")
+      .ilike("name", state)
+      .maybeSingle();
     stateId = data?.id;
   }
 
   let cityId: string | undefined;
   if (city) {
-    const { data } = await supabase.from("cities").select("id").ilike("name", city).maybeSingle();
+    const { data } = await supabase
+      .from("cities")
+      .select("id")
+      .ilike("name", city)
+      .maybeSingle();
     cityId = data?.id;
   }
 
-  if (listingType === "Sale" || listingType === "Rent") query = query.eq("listing_type", listingType);
-  else if (inferredListingType) query = query.eq("listing_type", inferredListingType.listingType);
+  if (listingType === "Sale" || listingType === "Rent")
+    query = query.eq("listing_type", listingType);
+  else if (inferredListingType)
+    query = query.eq("listing_type", inferredListingType.listingType);
 
   if (propertyType) query = query.eq("property_type", propertyType);
-  if (bedrooms && Number.isFinite(Number(bedrooms))) query = query.eq("bedrooms", Number(bedrooms));
-  if (Number.isFinite(minPrice) && minPrice > 0) query = query.gte("price", minPrice);
-  if (Number.isFinite(maxPrice) && maxPrice > 0) query = query.lte("price", maxPrice);
+  if (bedrooms && Number.isFinite(Number(bedrooms)))
+    query = query.eq("bedrooms", Number(bedrooms));
+  if (Number.isFinite(minPrice) && minPrice > 0)
+    query = query.gte("price", minPrice);
+  if (Number.isFinite(maxPrice) && maxPrice > 0)
+    query = query.lte("price", maxPrice);
   if (cityId) query = query.eq("city_id", cityId);
   else if (stateId) query = query.eq("cities.state_id", stateId);
   if (keyword) {
@@ -170,11 +220,13 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
           normalizedSearch,
           ...inferredPropertyType.aliases,
           ...inferredPropertyType.propertyTypes,
-        ]
+        ],
       );
       if (propertyTypeOr) query = query.or(propertyTypeOr);
     } else {
-      const keywordTerms = normalizedSearch ? getSearchAliases(keyword) : [keyword];
+      const keywordTerms = normalizedSearch
+        ? getSearchAliases(keyword)
+        : [keyword];
       const keywordOr = buildKeywordOr(keywordTerms);
       if (keywordOr) query = query.or(keywordOr);
     }
@@ -189,24 +241,42 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
     .range(from, to);
 
   const results = data ? sortFeaturedPropertiesFirst(data) : [];
+  const pageHeading = keyword
+    ? `Search results for “${keyword}”`
+    : propertyTypeDisplayName
+      ? `${propertyTypeDisplayName} Properties`
+      : "Property Results";
   const activeSearchChips = [
     keyword ? { label: "Search", value: keyword } : null,
-    inferredPropertyType ? { label: "Matched as", value: inferredPropertyType.label } : null,
-    inferredListingType ? { label: "Matched as", value: inferredListingType.label } : null,
+    propertyTypeDisplayName
+      ? { label: "Property type", value: propertyTypeDisplayName }
+      : null,
+    listingType ? { label: "Listing type", value: listingType } : null,
+    inferredPropertyType
+      ? { label: "Matched as", value: inferredPropertyType.label }
+      : null,
+    inferredListingType
+      ? { label: "Matched as", value: inferredListingType.label }
+      : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
     <main className="container-custom py-12 md:py-16 space-y-10">
       <header className="space-y-4">
         <div className="space-y-2">
-          <h1 className="text-2xl md:text-3xl font-semibold">{keyword ? `Search results for “${keyword}”` : "Property Results"}</h1>
-          <p className="text-sm text-muted">{count || 0} verified properties found.</p>
+          <h1 className="text-2xl md:text-3xl font-semibold">{pageHeading}</h1>
+          <p className="text-sm text-muted">
+            {count || 0} verified properties found.
+          </p>
         </div>
 
         {activeSearchChips.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {activeSearchChips.map((chip) => (
-              <span key={`${chip.label}-${chip.value}`} className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+              <span
+                key={`${chip.label}-${chip.value}`}
+                className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-medium text-red-700"
+              >
                 {chip.label}: {chip.value}
               </span>
             ))}
@@ -218,13 +288,21 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
         <div className="text-center py-16 px-6 border rounded-xl bg-white space-y-5">
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-gray-900">
-              {keyword ? `No matching properties found for “${keyword}”.` : "No properties found."}
+              {keyword
+                ? `No matching properties found for “${keyword}”.`
+                : "No properties found."}
             </h2>
-            <p className="text-muted">Try a different property type, listing type, city, or locality.</p>
+            <p className="text-muted">
+              Try a different property type, listing type, city, or locality.
+            </p>
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             {noResultSuggestions.map((suggestion) => (
-              <Link key={suggestion.label} className={suggestionLinkClass} href={suggestion.href}>
+              <Link
+                key={suggestion.label}
+                className={suggestionLinkClass}
+                href={suggestion.href}
+              >
                 {suggestion.label}
               </Link>
             ))}
