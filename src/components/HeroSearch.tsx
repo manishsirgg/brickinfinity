@@ -15,6 +15,7 @@ export default function HeroSearch() {
   const router = useRouter();
 
   const [listingType, setListingType] = useState<"Sale" | "Rent">("Sale");
+  const [listingTypeTouched, setListingTypeTouched] = useState(false);
 
   const [states, setStates] = useState<LocationOption[]>([]);
   const [cities, setCities] = useState<LocationOption[]>([]);
@@ -96,7 +97,7 @@ export default function HeroSearch() {
     if (max) params.set("max_price", max);
     if (bedrooms) params.set("bedrooms", bedrooms);
 
-    params.set("listing_type", listingType);
+    if (listingTypeTouched) params.set("listing_type", listingType);
     const url = params.toString() ? `/properties?${params.toString()}` : "/properties";
 
     router.push(url);
@@ -121,7 +122,10 @@ export default function HeroSearch() {
 
           <button
             type="button"
-            onClick={() => setListingType("Sale")}
+            onClick={() => {
+              setListingType("Sale");
+              setListingTypeTouched(true);
+            }}
             className={`relative z-10 flex-1 py-2 text-sm font-semibold ${
               listingType === "Sale" ? "text-white" : "text-gray-700"
             }`}
@@ -131,7 +135,10 @@ export default function HeroSearch() {
 
           <button
             type="button"
-            onClick={() => setListingType("Rent")}
+            onClick={() => {
+              setListingType("Rent");
+              setListingTypeTouched(true);
+            }}
             className={`relative z-10 flex-1 py-2 text-sm font-semibold ${
               listingType === "Rent" ? "text-white" : "text-gray-700"
             }`}
