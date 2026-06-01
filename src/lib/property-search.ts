@@ -20,6 +20,11 @@ export type ListingTypeSearchIntent = {
   aliases: string[];
 };
 
+export type PropertySearchLocationIds = {
+  cityIds: string[];
+  localityIds: string[];
+};
+
 const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
   {
     key: "plot",
@@ -29,6 +34,7 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
       "Land",
       "Residential Plot",
       "Commercial Plot",
+      "Plot / Land",
       "Land/Plot",
       "land_plot",
       "commercial_plot",
@@ -39,6 +45,9 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
       "plots",
       "land",
       "lands",
+      "plot land",
+      "plot/land",
+      "plot / land",
       "residential plot",
       "residential plots",
       "commercial plot",
@@ -92,7 +101,14 @@ const PROPERTY_TYPE_INTENTS: PropertyTypeSearchIntent[] = [
     key: "house",
     label: "House / Home",
     propertyTypes: ["House", "Villa"],
-    aliases: ["home", "homes", "house", "houses", "independent house", "independent houses"],
+    aliases: [
+      "home",
+      "homes",
+      "house",
+      "houses",
+      "independent house",
+      "independent houses",
+    ],
   },
   {
     key: "residential",
@@ -117,6 +133,14 @@ const LISTING_TYPE_INTENTS: ListingTypeSearchIntent[] = [
   },
 ];
 
+const KEYWORD_SEARCH_COLUMNS = [
+  "title",
+  "description",
+  "slug",
+  "property_type",
+  "listing_type",
+] as const;
+
 function singularizeToken(token: string) {
   if (token.length <= 3) return token;
   if (token.endsWith("ies")) return `${token.slice(0, -3)}y`;
@@ -126,7 +150,11 @@ function singularizeToken(token: string) {
 }
 
 function normalizeAlias(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function includesSearchPhrase(search: string, alias: string) {
@@ -136,12 +164,17 @@ function includesSearchPhrase(search: string, alias: string) {
   const searchWithBoundaries = ` ${search} `;
   if (searchWithBoundaries.includes(` ${normalizedAlias} `)) return true;
 
-  const singularSearch = search
-    .split(" ")
-    .map(singularizeToken)
-    .join(" ");
+  const singularSearch = search.split(" ").map(singularizeToken).join(" ");
 
   return ` ${singularSearch} `.includes(` ${normalizedAlias} `);
+}
+
+function toSupabasePattern(value: string) {
+  return value
+    .replace(/[,%()]/g, " ")
+    .replace(/[%_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function normalizeSearchTerm(input: string) {
@@ -154,7 +187,7 @@ export function getPropertyTypeSearchIntent(search: string) {
 
   return (
     PROPERTY_TYPE_INTENTS.find((intent) =>
-      intent.aliases.some((alias) => includesSearchPhrase(normalized, alias))
+      intent.aliases.some((alias) => includesSearchPhrase(normalized, alias)),
     ) ?? null
   );
 }
@@ -169,7 +202,7 @@ export function getListingTypeSearchIntent(search: string) {
 
   return (
     LISTING_TYPE_INTENTS.find((intent) =>
-      intent.aliases.some((alias) => includesSearchPhrase(normalized, alias))
+      intent.aliases.some((alias) => includesSearchPhrase(normalized, alias)),
     ) ?? null
   );
 }
@@ -185,12 +218,50 @@ export function getSearchAliases(search: string) {
   if (normalized) aliases.add(normalized);
 
   const propertyIntent = getPropertyTypeSearchIntent(normalized);
-  propertyIntent?.aliases.forEach((alias) => aliases.add(normalizeAlias(alias)));
-  propertyIntent?.propertyTypes.forEach((type) => aliases.add(normalizeAlias(type)));
+  propertyIntent?.aliases.forEach((alias) =>
+    aliases.add(normalizeAlias(alias)),
+  );
+  propertyIntent?.propertyTypes.forEach((type) =>
+    aliases.add(normalizeAlias(type)),
+  );
 
   const listingIntent = getListingTypeSearchIntent(normalized);
   listingIntent?.aliases.forEach((alias) => aliases.add(normalizeAlias(alias)));
-  if (listingIntent?.listingType) aliases.add(normalizeAlias(listingIntent.listingType));
+  if (listingIntent?.listingType)
+    aliases.add(normalizeAlias(listingIntent.listingType));
 
   return Array.from(aliases).filter(Boolean);
+}
+
+export function buildPropertyKeywordOr(
+  terms: string[],
+  locationIds: PropertySearchLocationIds = { cityIds: [], localityIds: [] },
+) {
+  const conditions = terms.flatMap((term) => {
+    const pattern = toSupabasePattern(term);
+    if (!pattern) return [];
+
+    return KEYWORD_SEARCH_COLUMNS.map(
+      (column) => `${column}.ilike.%${pattern}%`,
+    );
+  });
+
+  if (locationIds.cityIds.length) {
+    conditions.push(`city_id.in.(${locationIds.cityIds.join(",")})`);
+  }
+
+  if (locationIds.localityIds.length) {
+    conditions.push(`locality_id.in.(${locationIds.localityIds.join(",")})`);
+  }
+
+  return Array.from(new Set(conditions)).join(",");
+}
+
+export function buildLocationNameOr(terms: string[]) {
+  const conditions = terms.flatMap((term) => {
+    const pattern = toSupabasePattern(term);
+    return pattern ? [`name.ilike.%${pattern}%`] : [];
+  });
+
+  return Array.from(new Set(conditions)).join(",");
 }

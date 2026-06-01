@@ -2,10 +2,13 @@ import { createServiceClient } from "@/lib/supabase/service";
 import PropertyCard from "@/components/property/PropertyCard";
 import { sortFeaturedPropertiesFirst } from "@/lib/property-featured";
 import {
+  buildLocationNameOr,
+  buildPropertyKeywordOr,
   getListingTypeSearchIntent,
   getPropertyTypeSearchIntent,
   getSearchAliases,
   normalizeSearchTerm,
+  type PropertySearchLocationIds,
 } from "@/lib/property-search";
 import Link from "next/link";
 
@@ -76,61 +79,22 @@ function sanitizeSearchTerm(value?: string) {
   return cleaned || undefined;
 }
 
-function toSupabasePattern(value: string) {
-  return value
-    .replace(/[,%()]/g, " ")
-    .replace(/[%_]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-type LocationSearchIds = {
-  cityIds: string[];
-  localityIds: string[];
-};
-
-function buildKeywordOr(terms: string[], locationIds: LocationSearchIds) {
-  const conditions = terms.flatMap((term) => {
-    const pattern = toSupabasePattern(term);
-    if (!pattern) return [];
-
-    return [
-      `title.ilike.%${pattern}%`,
-      `description.ilike.%${pattern}%`,
-      `address.ilike.%${pattern}%`,
-      `location.ilike.%${pattern}%`,
-      `slug.ilike.%${pattern}%`,
-      `property_type.ilike.%${pattern}%`,
-      `listing_type.ilike.%${pattern}%`,
-    ];
-  });
-
-  if (locationIds.cityIds.length) {
-    conditions.push(`city_id.in.(${locationIds.cityIds.join(",")})`);
-  }
-
-  if (locationIds.localityIds.length) {
-    conditions.push(`locality_id.in.(${locationIds.localityIds.join(",")})`);
-  }
-
-  return Array.from(new Set(conditions)).join(",");
-}
-
 async function getKeywordLocationIds(
   supabase: ReturnType<typeof createServiceClient>,
   terms: string[],
-): Promise<LocationSearchIds> {
+): Promise<PropertySearchLocationIds> {
   const cityIds = new Set<string>();
   const localityIds = new Set<string>();
   const locationOr = buildLocationNameOr(terms);
 
   if (!locationOr) return { cityIds: [], localityIds: [] };
 
-  const [{ data: cities }, { data: localities }, { data: states }] = await Promise.all([
-    supabase.from("cities").select("id").or(locationOr).limit(100),
-    supabase.from("localities").select("id").or(locationOr).limit(100),
-    supabase.from("states").select("id").or(locationOr).limit(50),
-  ]);
+  const [{ data: cities }, { data: localities }, { data: states }] =
+    await Promise.all([
+      supabase.from("cities").select("id").or(locationOr).limit(100),
+      supabase.from("localities").select("id").or(locationOr).limit(100),
+      supabase.from("states").select("id").or(locationOr).limit(50),
+    ]);
 
   cities?.forEach((city: { id?: string | null }) => {
     if (city.id) cityIds.add(city.id);
@@ -141,7 +105,8 @@ async function getKeywordLocationIds(
   });
 
   const stateIds =
-    states?.map((state: { id?: string | null }) => state.id).filter(Boolean) ?? [];
+    states?.map((state: { id?: string | null }) => state.id).filter(Boolean) ??
+    [];
 
   if (stateIds.length) {
     const { data: stateCities } = await supabase
@@ -159,15 +124,6 @@ async function getKeywordLocationIds(
     cityIds: Array.from(cityIds),
     localityIds: Array.from(localityIds),
   };
-}
-
-function buildLocationNameOr(terms: string[]) {
-  const conditions = terms.flatMap((term) => {
-    const pattern = toSupabasePattern(term);
-    return pattern ? [`name.ilike.%${pattern}%`] : [];
-  });
-
-  return Array.from(new Set(conditions)).join(",");
 }
 
 export default async function PropertiesSearchPage({
@@ -264,10 +220,10 @@ export default async function PropertiesSearchPage({
   if (cityId) query = query.eq("city_id", cityId);
   else if (stateId) query = query.eq("cities.state_id", stateId);
   if (keyword) {
-    const keywordOr = buildKeywordOr(keywordTerms, keywordLocationIds);
+    const keywordOr = buildPropertyKeywordOr(keywordTerms, keywordLocationIds);
 
     if (process.env.NODE_ENV === "development") {
-      console.debug("[properties-search]", {
+      console.debug("[properties-search-debug]", {
         normalizedSearch,
         propertyTypeIntent: propertyTypeIntent?.key ?? null,
         listingTypeIntent: listingTypeIntent?.key ?? null,
@@ -289,7 +245,7 @@ export default async function PropertiesSearchPage({
     if (keywordOr) query = query.or(keywordOr);
   }
 
-  const { data, count } = await query
+  const { data, count, error } = await query
     .order("is_featured", { ascending: false })
     .order("featured_rank", { ascending: false })
     .order("featured_until", { ascending: false })
@@ -297,9 +253,13 @@ export default async function PropertiesSearchPage({
     .order("created_at", { ascending: false })
     .range(from, to);
 
+  if (error) {
+    console.error("Properties search query error:", error);
+  }
+
   const results = data ? sortFeaturedPropertiesFirst(data) : [];
   const totalMatches = count ?? results.length;
-  const showNoResultSuggestions = totalMatches === 0;
+  const showNoResultSuggestions = !error && totalMatches === 0;
   const pageHeading = keyword
     ? `Search results for “${keyword}”`
     : propertyTypeDisplayName
