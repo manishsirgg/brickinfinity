@@ -11,7 +11,29 @@ import Link from "next/link";
 
 const pageSize = 12;
 const suggestionLinkClass =
-  "rounded-full border border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
+  "rounded-full border border-slate-900 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
+
+const noResultSuggestions = [
+  {
+    label: "Try Commercial Space",
+    href: {
+      pathname: "/properties",
+      query: { search: "commercial" },
+    },
+  },
+  {
+    label: "Try Rent",
+    href: "/properties/rent",
+  },
+  {
+    label: "Try Buy",
+    href: "/properties/buy",
+  },
+  {
+    label: "Try Latest Listings",
+    href: "/properties/latest",
+  },
+];
 
 type PropertiesSearchParams = {
   search?: string;
@@ -201,21 +223,11 @@ export default async function PropertiesSearchPage({ searchParams = {} }: Props)
             <p className="text-muted">Try a different property type, listing type, city, or locality.</p>
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              className={suggestionLinkClass}
-              href={{ pathname: "/properties", query: { search: "commercial" } }}
-            >
-              Try Commercial Space
-            </Link>
-            <Link className={suggestionLinkClass} href="/properties/rent">
-              Try Rent
-            </Link>
-            <Link className={suggestionLinkClass} href="/properties/buy">
-              Try Buy
-            </Link>
-            <Link className={suggestionLinkClass} href="/properties/latest">
-              Try Latest Listings
-            </Link>
+            {noResultSuggestions.map((suggestion) => (
+              <Link key={suggestion.label} className={suggestionLinkClass} href={suggestion.href}>
+                {suggestion.label}
+              </Link>
+            ))}
           </div>
         </div>
       )}
