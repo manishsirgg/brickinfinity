@@ -347,7 +347,7 @@ export default function AboutPage() {
       </section>
 
       <section className="px-4 py-16 sm:px-6 md:py-24">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-12">
           <div>
             <SectionHeader
               eyebrow="Why Brick Infinity exists"
@@ -358,14 +358,19 @@ export default function AboutPage() {
               “A property cannot find the right buyer or tenant if it stays invisible.”
             </blockquote>
           </div>
-          <div className="relative min-h-[320px] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl sm:min-h-[430px]">
-            <Image
-              src="/images/about/missionhighlight.png"
-              alt="Mission highlight showing digital property decisions"
-              fill
-              sizes="(min-width: 1024px) 50vw, 100vw"
-              className="object-cover"
-            />
+          <div className="w-full min-w-0">
+            <div className="relative overflow-hidden rounded-3xl border border-red-100 bg-white shadow-xl">
+              <div className="relative aspect-[16/10] w-full bg-white">
+                <Image
+                  src="/images/about/missionhighlight.png"
+                  alt="Brick Infinity mission highlight showing real people, real properties, and real decisions"
+                  fill
+                  sizes="(min-width: 1024px) 50vw, 100vw"
+                  className="object-contain p-2"
+                  priority={false}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
