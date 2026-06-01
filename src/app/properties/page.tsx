@@ -84,7 +84,12 @@ function toSupabasePattern(value: string) {
     .trim();
 }
 
-function buildKeywordOr(terms: string[]) {
+type LocationSearchIds = {
+  cityIds: string[];
+  localityIds: string[];
+};
+
+function buildKeywordOr(terms: string[], locationIds: LocationSearchIds) {
   const conditions = terms.flatMap((term) => {
     const pattern = toSupabasePattern(term);
     if (!pattern) return [];
@@ -97,9 +102,69 @@ function buildKeywordOr(terms: string[]) {
       `slug.ilike.%${pattern}%`,
       `property_type.ilike.%${pattern}%`,
       `listing_type.ilike.%${pattern}%`,
-      `cities.name.ilike.%${pattern}%`,
-      `localities.name.ilike.%${pattern}%`,
     ];
+  });
+
+  if (locationIds.cityIds.length) {
+    conditions.push(`city_id.in.(${locationIds.cityIds.join(",")})`);
+  }
+
+  if (locationIds.localityIds.length) {
+    conditions.push(`locality_id.in.(${locationIds.localityIds.join(",")})`);
+  }
+
+  return Array.from(new Set(conditions)).join(",");
+}
+
+async function getKeywordLocationIds(
+  supabase: ReturnType<typeof createServiceClient>,
+  terms: string[],
+): Promise<LocationSearchIds> {
+  const cityIds = new Set<string>();
+  const localityIds = new Set<string>();
+  const locationOr = buildLocationNameOr(terms);
+
+  if (!locationOr) return { cityIds: [], localityIds: [] };
+
+  const [{ data: cities }, { data: localities }, { data: states }] = await Promise.all([
+    supabase.from("cities").select("id").or(locationOr).limit(100),
+    supabase.from("localities").select("id").or(locationOr).limit(100),
+    supabase.from("states").select("id").or(locationOr).limit(50),
+  ]);
+
+  cities?.forEach((city: { id?: string | null }) => {
+    if (city.id) cityIds.add(city.id);
+  });
+
+  localities?.forEach((locality: { id?: string | null }) => {
+    if (locality.id) localityIds.add(locality.id);
+  });
+
+  const stateIds =
+    states?.map((state: { id?: string | null }) => state.id).filter(Boolean) ?? [];
+
+  if (stateIds.length) {
+    const { data: stateCities } = await supabase
+      .from("cities")
+      .select("id")
+      .in("state_id", stateIds)
+      .limit(200);
+
+    stateCities?.forEach((city: { id?: string | null }) => {
+      if (city.id) cityIds.add(city.id);
+    });
+  }
+
+  return {
+    cityIds: Array.from(cityIds),
+    localityIds: Array.from(localityIds),
+  };
+}
+
+function buildLocationNameOr(terms: string[]) {
+  const conditions = terms.flatMap((term) => {
+    const pattern = toSupabasePattern(term);
+    return pattern ? [`name.ilike.%${pattern}%`] : [];
   });
 
   return Array.from(new Set(conditions)).join(",");
@@ -127,6 +192,14 @@ export default async function PropertiesSearchPage({
     : null;
   const inferredPropertyType = !propertyType ? propertyTypeIntent : null;
   const inferredListingType = !listingType ? listingTypeIntent : null;
+  const keywordTerms = keyword
+    ? normalizedSearch
+      ? getSearchAliases(keyword)
+      : [keyword]
+    : [];
+  const keywordLocationIds = keyword
+    ? await getKeywordLocationIds(supabase, keywordTerms)
+    : { cityIds: [], localityIds: [] };
   const city = cleanString(resolvedSearchParams.city);
   const state = cleanString(resolvedSearchParams.state);
   const bedrooms = cleanString(resolvedSearchParams.bedrooms);
@@ -180,8 +253,6 @@ export default async function PropertiesSearchPage({
 
   if (listingType === "Sale" || listingType === "Rent")
     query = query.eq("listing_type", listingType);
-  else if (inferredListingType)
-    query = query.eq("listing_type", inferredListingType.listingType);
 
   if (propertyType) query = query.eq("property_type", propertyType);
   if (bedrooms && Number.isFinite(Number(bedrooms)))
@@ -193,10 +264,7 @@ export default async function PropertiesSearchPage({
   if (cityId) query = query.eq("city_id", cityId);
   else if (stateId) query = query.eq("cities.state_id", stateId);
   if (keyword) {
-    const keywordTerms = normalizedSearch
-      ? getSearchAliases(keyword)
-      : [keyword];
-    const keywordOr = buildKeywordOr(keywordTerms);
+    const keywordOr = buildKeywordOr(keywordTerms, keywordLocationIds);
 
     if (process.env.NODE_ENV === "development") {
       console.debug("[properties-search]", {
@@ -213,6 +281,7 @@ export default async function PropertiesSearchPage({
           minPrice: Number.isFinite(minPrice) && minPrice > 0 ? minPrice : null,
           maxPrice: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : null,
         },
+        keywordLocationIds,
         keywordOr,
       });
     }
