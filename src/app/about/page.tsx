@@ -7,11 +7,14 @@ import {
   BarChart3,
   Building2,
   CheckCircle2,
+  Eye,
+  Globe,
   ClipboardCheck,
   Compass,
   FileCheck2,
   Heart,
   Home,
+  ImageIcon,
   KeyRound,
   Mail,
   MapPin,
@@ -43,9 +46,21 @@ export const metadata: Metadata = {
 const listingRoute = "/dashboard/my-listings";
 
 const trustCards = [
-  { title: "Buy Properties", copy: "Discover spaces with clearer details.", icon: Home },
-  { title: "Rent Properties", copy: "Compare homes, shops, and offices faster.", icon: KeyRound },
-  { title: "Promote Listings", copy: "Give serious listings more visibility.", icon: Megaphone },
+  {
+    title: "Buy Properties",
+    copy: "Discover spaces with clearer details.",
+    icon: Home,
+  },
+  {
+    title: "Rent Properties",
+    copy: "Compare homes, shops, and offices faster.",
+    icon: KeyRound,
+  },
+  {
+    title: "Promote Listings",
+    copy: "Give serious listings more visibility.",
+    icon: Megaphone,
+  },
 ];
 
 const platformCards = [
@@ -98,11 +113,31 @@ const trustSafety = [
 ];
 
 const audiences = [
-  { title: "For Buyers", copy: "Find purchase-ready property options with useful details.", icon: Home },
-  { title: "For Tenants", copy: "Discover rental spaces that match local intent.", icon: KeyRound },
-  { title: "For Property Owners", copy: "Give your property a digital presence beyond offline reach.", icon: Building2 },
-  { title: "For Sellers", copy: "Manage listings, enquiries, and visibility from one place.", icon: Store },
-  { title: "For Investors", copy: "Track opportunities across property types and categories.", icon: TrendingUp },
+  {
+    title: "For Buyers",
+    copy: "Find purchase-ready property options with useful details.",
+    icon: Home,
+  },
+  {
+    title: "For Tenants",
+    copy: "Discover rental spaces that match local intent.",
+    icon: KeyRound,
+  },
+  {
+    title: "For Property Owners",
+    copy: "Give your property a digital presence beyond offline reach.",
+    icon: Building2,
+  },
+  {
+    title: "For Sellers",
+    copy: "Manage listings, enquiries, and visibility from one place.",
+    icon: Store,
+  },
+  {
+    title: "For Investors",
+    copy: "Track opportunities across property types and categories.",
+    icon: TrendingUp,
+  },
 ];
 
 const stats = [
@@ -124,6 +159,34 @@ const afterPoints = [
   "Searchable online",
   "Stronger property presentation",
   "More enquiry opportunities",
+];
+
+const listingBenefits = [
+  {
+    title: "Digital Presence",
+    copy: "Your property becomes searchable and shareable online.",
+    icon: Globe,
+  },
+  {
+    title: "Better Visibility",
+    copy: "More people can discover your property beyond limited offline reach.",
+    icon: Eye,
+  },
+  {
+    title: "Clear Presentation",
+    copy: "Images, price, location, and property details stay organized in one place.",
+    icon: ImageIcon,
+  },
+  {
+    title: "Direct Enquiries",
+    copy: "Interested buyers or tenants can contact you through enquiry options.",
+    icon: MessageCircle,
+  },
+  {
+    title: "Faster Action",
+    copy: "Better visibility improves the chances of finding the right buyer or tenant.",
+    icon: TrendingUp,
+  },
 ];
 
 const featuredBenefits = [
@@ -171,7 +234,13 @@ function MiniIcon({ icon: Icon }: { icon: typeof Search }) {
   );
 }
 
-function ArrowLink({ href, children }: { href: string; children: React.ReactNode }) {
+function ArrowLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
@@ -203,17 +272,24 @@ export default function AboutPage() {
               </span>
             </h1>
             <p className="mt-6 max-w-2xl text-lg font-semibold leading-8 text-slate-700 md:text-xl">
-              Brick Infinity helps you find, list, promote, and connect for properties with more clarity, more visibility, and less confusion.
+              Brick Infinity helps you find, list, promote, and connect for
+              properties with more clarity, more visibility, and less confusion.
             </p>
             <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--color-muted)] md:text-lg">
-              Whether you want to buy, rent, sell, or promote a property, Brick Infinity gives you a digital platform where properties are easier to discover, easier to compare, and easier to act on.
+              Whether you want to buy, rent, sell, or promote a property, Brick
+              Infinity gives you a digital platform where properties are easier
+              to discover, easier to compare, and easier to act on.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Button href="/properties" className="w-full sm:w-auto">
                 Explore Properties
               </Button>
-              <Button href={listingRoute} variant="secondary" className="w-full sm:w-auto">
+              <Button
+                href={listingRoute}
+                variant="secondary"
+                className="w-full sm:w-auto"
+              >
                 List Your Property
               </Button>
             </div>
@@ -226,7 +302,9 @@ export default function AboutPage() {
                 >
                   <MiniIcon icon={item.icon} />
                   <h2 className="mt-4 text-base font-bold">{item.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{item.copy}</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                    {item.copy}
+                  </p>
                 </Card>
               ))}
             </div>
@@ -234,7 +312,11 @@ export default function AboutPage() {
 
           <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
             <div className="absolute -left-4 top-8 hidden rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-black/5 md:flex md:items-center md:gap-2">
-              <MapPin className="text-[var(--color-primary)]" size={18} aria-hidden="true" />
+              <MapPin
+                className="text-[var(--color-primary)]"
+                size={18}
+                aria-hidden="true"
+              />
               Local intent, online reach
             </div>
             <div className="absolute -right-2 bottom-16 hidden rounded-full bg-[var(--color-primary)] px-4 py-2 text-sm font-bold text-white shadow-xl md:block">
@@ -260,7 +342,9 @@ export default function AboutPage() {
                     <div className="mt-4 flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-bold">Verified Home</p>
-                        <p className="mt-1 text-xs text-slate-500">Buy • Prime locality</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Buy • Prime locality
+                        </p>
                       </div>
                       <span className="rounded-full bg-green-50 px-2.5 py-1 text-[10px] font-bold text-green-700">
                         Approved
@@ -287,7 +371,10 @@ export default function AboutPage() {
 
                 <div className="mt-5 grid grid-cols-3 gap-3 text-center text-xs font-semibold text-white/90">
                   {stats.slice(0, 3).map((item) => (
-                    <div key={item} className="rounded-2xl border border-white/10 bg-white/10 px-2 py-3 backdrop-blur">
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-white/10 bg-white/10 px-2 py-3 backdrop-blur"
+                    >
                       {item}
                     </div>
                   ))}
@@ -327,18 +414,29 @@ export default function AboutPage() {
               tone="after"
             />
           </div>
+
+          <ListingBenefitBar />
         </div>
       </section>
 
       <section className="bg-white px-4 py-16 sm:px-6 md:py-24">
         <div className="mx-auto max-w-7xl">
-          <SectionHeader eyebrow="What we do" title="One Platform. Multiple Real Estate Needs." centered />
+          <SectionHeader
+            eyebrow="What we do"
+            title="One Platform. Multiple Real Estate Needs."
+            centered
+          />
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {platformCards.map((item) => (
-              <Card key={item.title} className="group h-full p-6 transition duration-300 hover:-translate-y-2 hover:border-red-200 hover:shadow-[var(--shadow-medium)]">
+              <Card
+                key={item.title}
+                className="group h-full p-6 transition duration-300 hover:-translate-y-2 hover:border-red-200 hover:shadow-[var(--shadow-medium)]"
+              >
                 <MiniIcon icon={item.icon} />
                 <h3 className="mt-5 text-xl font-bold">{item.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{item.copy}</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+                  {item.copy}
+                </p>
                 <ArrowLink href={item.href}>Open route</ArrowLink>
               </Card>
             ))}
@@ -355,7 +453,8 @@ export default function AboutPage() {
               copy="Brick Infinity was created to make property discovery simpler, more transparent, and more accessible. Many good properties remain unnoticed because they are not presented digitally in the right way. Our mission is to help property owners increase visibility and help buyers or tenants make better property decisions with clear information, useful filters, and direct communication options."
             />
             <blockquote className="mt-8 rounded-3xl border border-red-100 bg-white p-6 text-xl font-black leading-snug text-[var(--color-dark)] shadow-[var(--shadow-soft)] md:text-2xl">
-              “A property cannot find the right buyer or tenant if it stays invisible.”
+              “A property cannot find the right buyer or tenant if it stays
+              invisible.”
             </blockquote>
           </div>
           <div className="w-full min-w-0">
@@ -377,17 +476,29 @@ export default function AboutPage() {
 
       <section className="bg-white px-4 py-16 sm:px-6 md:py-24">
         <div className="mx-auto max-w-7xl">
-          <SectionHeader eyebrow="Simple flow" title="How Brick Infinity Works" copy="Choose your path and see the steps Brick Infinity supports for discovery, verification, and promotion." centered />
+          <SectionHeader
+            eyebrow="Simple flow"
+            title="How Brick Infinity Works"
+            copy="Choose your path and see the steps Brick Infinity supports for discovery, verification, and promotion."
+            centered
+          />
           <HowBrickInfinityWorksTabs />
         </div>
       </section>
 
       <section className="px-4 py-16 sm:px-6 md:py-24">
         <div className="mx-auto max-w-7xl">
-          <SectionHeader eyebrow="Key features" title="Designed to Make Property Discovery Easier" centered />
+          <SectionHeader
+            eyebrow="Key features"
+            title="Designed to Make Property Discovery Easier"
+            centered
+          />
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((item) => (
-              <Card key={item.title} className="group p-5 transition duration-300 hover:-translate-y-1 hover:border-red-200 hover:shadow-[var(--shadow-medium)]">
+              <Card
+                key={item.title}
+                className="group p-5 transition duration-300 hover:-translate-y-1 hover:border-red-200 hover:shadow-[var(--shadow-medium)]"
+              >
                 <div className="flex items-center gap-4">
                   <MiniIcon icon={item.icon} />
                   <h3 className="font-bold">{item.title}</h3>
@@ -408,7 +519,10 @@ export default function AboutPage() {
           />
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {trustSafety.map((item) => (
-              <Card key={item.title} className="p-6 text-center transition duration-300 hover:-translate-y-1 hover:border-green-200 hover:shadow-[var(--shadow-medium)]">
+              <Card
+                key={item.title}
+                className="p-6 text-center transition duration-300 hover:-translate-y-1 hover:border-green-200 hover:shadow-[var(--shadow-medium)]"
+              >
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-green-700 ring-1 ring-green-100">
                   <item.icon size={22} aria-hidden="true" />
                 </div>
@@ -419,8 +533,8 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="px-4 py-16 sm:px-6 md:py-24">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+      <section className="px-4 py-14 sm:px-6 md:py-20">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 lg:grid-cols-2 lg:gap-12">
           <div>
             <SectionHeader
               eyebrow="Featured listing promotion"
@@ -432,8 +546,15 @@ export default function AboutPage() {
             </div>
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
               {featuredBenefits.map((benefit) => (
-                <div key={benefit} className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-semibold shadow-sm ring-1 ring-slate-100">
-                  <CheckCircle2 className="shrink-0 text-green-600" size={18} aria-hidden="true" />
+                <div
+                  key={benefit}
+                  className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-semibold shadow-sm ring-1 ring-slate-100"
+                >
+                  <CheckCircle2
+                    className="shrink-0 text-green-600"
+                    size={18}
+                    aria-hidden="true"
+                  />
                   {benefit}
                 </div>
               ))}
@@ -444,14 +565,22 @@ export default function AboutPage() {
               image="/images/about/normallisting.png"
               alt="Normal property listing visibility preview"
               title="Normal Listing"
-              points={["Standard listing placement", "Discoverable through search", "Good for regular visibility"]}
+              points={[
+                "Standard listing placement",
+                "Discoverable through search",
+                "Good for regular visibility",
+              ]}
             />
             <ListingComparison
               featured
               image="/images/about/featuredlisting.png"
               alt="Featured property listing visibility preview"
               title="Featured Listing"
-              points={["More prominent positioning", "Highlight badge experience", "Built for faster attention"]}
+              points={[
+                "More prominent positioning",
+                "Highlight badge experience",
+                "Built for faster attention",
+              ]}
             />
           </div>
         </div>
@@ -459,21 +588,30 @@ export default function AboutPage() {
 
       <section className="bg-white px-4 py-16 sm:px-6 md:py-24">
         <div className="mx-auto max-w-7xl">
-          <SectionHeader eyebrow="Who it is for" title="Made for Everyone Involved in Property Decisions" centered />
+          <SectionHeader
+            eyebrow="Who it is for"
+            title="Made for Everyone Involved in Property Decisions"
+            centered
+          />
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
             {audiences.map((item) => (
-              <Card key={item.title} className="p-5 transition duration-300 hover:-translate-y-1 hover:border-red-200 hover:shadow-[var(--shadow-medium)]">
+              <Card
+                key={item.title}
+                className="p-5 transition duration-300 hover:-translate-y-1 hover:border-red-200 hover:shadow-[var(--shadow-medium)]"
+              >
                 <MiniIcon icon={item.icon} />
                 <h3 className="mt-5 font-bold">{item.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{item.copy}</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+                  {item.copy}
+                </p>
               </Card>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="px-4 py-16 sm:px-6 md:py-24">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+      <section className="px-4 py-14 sm:px-6 md:py-20">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 lg:grid-cols-2 lg:gap-12">
           <div>
             <SectionHeader
               eyebrow="Local + digital"
@@ -481,38 +619,53 @@ export default function AboutPage() {
               copy="Most property decisions still begin with local intent: people want property in a specific area, city, market, or neighborhood. Brick Infinity connects that local need with digital visibility. Instead of depending only on offline reach, your property can now be searchable, shareable, and discoverable online."
             />
             <Card className="mt-8 border-red-100 bg-gradient-to-br from-white to-orange-50 p-6 md:p-8">
-              <MapPin className="text-[var(--color-primary)]" size={32} aria-hidden="true" />
+              <MapPin
+                className="text-[var(--color-primary)]"
+                size={32}
+                aria-hidden="true"
+              />
               <p className="mt-5 text-xl font-black leading-snug md:text-2xl">
-                The more people see your property, the higher the chances of finding the right buyer or tenant.
+                The more people see your property, the higher the chances of
+                finding the right buyer or tenant.
               </p>
             </Card>
           </div>
-          <div className="relative min-h-[320px] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl sm:min-h-[420px]">
-            <Image
-              src="/images/about/localdigital.png"
-              alt="Local real estate gaining a strong digital presence"
-              fill
-              sizes="(min-width: 1024px) 48vw, 100vw"
-              className="object-cover"
-            />
+          <div className="w-full min-w-0">
+            <div className="relative w-full overflow-hidden rounded-3xl border border-red-100 bg-white shadow-xl">
+              <div className="relative aspect-[16/10] w-full bg-white sm:aspect-[16/9] lg:aspect-[16/10]">
+                <Image
+                  src="/images/about/localdigital.png"
+                  alt="Brick Infinity local reach and digital visibility"
+                  fill
+                  sizes="(min-width: 1024px) 50vw, 100vw"
+                  className="object-contain p-2 sm:p-3"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-white px-4 py-16 sm:px-6 md:py-24">
+      <section className="bg-white px-4 pb-24 pt-14 sm:px-6 md:py-20">
         <div className="mx-auto max-w-7xl">
-          <SectionHeader eyebrow="Interactive stats" title="Visibility Signals That Matter" centered />
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SectionHeader
+            eyebrow="Interactive stats"
+            title="Visibility Signals That Matter"
+            centered
+          />
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {stats.map((stat, index) => (
               <Card
                 key={stat}
-                className="group relative overflow-hidden p-6 transition duration-300 hover:-translate-y-2 hover:shadow-[var(--shadow-medium)]"
+                className="group relative w-full overflow-hidden p-5 transition duration-300 hover:-translate-y-2 hover:shadow-[var(--shadow-medium)] sm:p-6"
               >
                 <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-red-100 transition duration-300 group-hover:scale-125" />
                 <p className="relative text-sm font-bold uppercase tracking-[0.24em] text-[var(--color-primary)]">
                   Signal 0{index + 1}
                 </p>
-                <h3 className="relative mt-5 text-2xl font-black">{stat}</h3>
+                <h3 className="relative mt-4 text-xl font-black leading-tight sm:text-2xl">
+                  {stat}
+                </h3>
               </Card>
             ))}
           </div>
@@ -523,21 +676,33 @@ export default function AboutPage() {
         <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[var(--color-dark)] px-6 py-12 text-white shadow-2xl md:px-12 md:py-16">
           <div className="grid gap-10 lg:grid-cols-[1fr_0.78fr] lg:items-center">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.28em] text-red-200">Take the next step</p>
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-red-200">
+                Take the next step
+              </p>
               <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">
                 Ready to Find, List, or Promote a Property?
               </h2>
               <p className="mt-5 max-w-3xl text-base leading-8 text-white/75 md:text-lg">
-                Whether you are searching for your next space or trying to give your property better visibility, Brick Infinity helps you take the next step with confidence.
+                Whether you are searching for your next space or trying to give
+                your property better visibility, Brick Infinity helps you take
+                the next step with confidence.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Button href="/properties" className="w-full sm:w-auto">
                   Explore Properties
                 </Button>
-                <Button href={listingRoute} variant="secondary" className="w-full sm:w-auto">
+                <Button
+                  href={listingRoute}
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                >
                   List Your Property
                 </Button>
-                <Button href={listingRoute} variant="outline" className="w-full bg-white/5 sm:w-auto">
+                <Button
+                  href={listingRoute}
+                  variant="outline"
+                  className="w-full bg-white/5 sm:w-auto"
+                >
                   Promote Your Property
                 </Button>
               </div>
@@ -554,15 +719,26 @@ export default function AboutPage() {
               </div>
               <h3 className="mt-6 text-xl font-bold">Contact Brick Infinity</h3>
               <div className="mt-5 space-y-4 text-sm text-white/80">
-                <a className="flex items-center justify-center gap-3 transition hover:text-white" href="https://wa.me/918989601701" target="_blank" rel="noreferrer">
+                <a
+                  className="flex items-center justify-center gap-3 transition hover:text-white"
+                  href="https://wa.me/918989601701"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   <MessageCircle size={18} aria-hidden="true" />
                   WhatsApp: +91-8989601701
                 </a>
-                <a className="flex items-center justify-center gap-3 transition hover:text-white" href="tel:+918989601701">
+                <a
+                  className="flex items-center justify-center gap-3 transition hover:text-white"
+                  href="tel:+918989601701"
+                >
                   <Phone size={18} aria-hidden="true" />
                   Call: +91-8989601701
                 </a>
-                <a className="flex items-center justify-center gap-3 break-all transition hover:text-white" href="mailto:infobrickinfinity@gmail.com">
+                <a
+                  className="flex items-center justify-center gap-3 break-all transition hover:text-white"
+                  href="mailto:infobrickinfinity@gmail.com"
+                >
                   <Mail size={18} aria-hidden="true" />
                   Email: infobrickinfinity@gmail.com
                 </a>
@@ -572,6 +748,75 @@ export default function AboutPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function ListingBenefitBar() {
+  return (
+    <section
+      className="mt-10 md:mt-12"
+      aria-labelledby="listing-benefit-heading"
+    >
+      <div className="overflow-hidden rounded-3xl border border-red-100 bg-white p-5 shadow-xl sm:p-6 md:p-8">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-[var(--color-primary)]">
+            After listing
+          </p>
+          <h3
+            id="listing-benefit-heading"
+            className="mt-3 text-2xl font-extrabold tracking-tight text-[var(--color-dark)] md:text-4xl"
+          >
+            What changes after listing on Brick Infinity?
+          </h3>
+          <p className="mt-4 text-base leading-7 text-[var(--color-muted)] md:text-lg">
+            Your property gets a digital presence that helps serious buyers and
+            tenants discover, compare, and enquire.
+          </p>
+        </div>
+
+        <div className="mt-8 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {listingBenefits.map((benefit) => (
+            <article
+              key={benefit.title}
+              className="group relative min-w-0 rounded-2xl border border-slate-100 bg-slate-50 p-5 transition duration-300 hover:-translate-y-1 hover:border-red-200 hover:bg-white hover:shadow-[var(--shadow-soft)]"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-red-50 to-orange-50 text-[var(--color-primary)] ring-1 ring-red-100">
+                  <benefit.icon size={22} aria-hidden="true" />
+                </div>
+                <CheckCircle2
+                  className="shrink-0 text-green-600"
+                  size={20}
+                  aria-hidden="true"
+                />
+              </div>
+              <h4 className="mt-5 text-base font-bold text-[var(--color-dark)]">
+                {benefit.title}
+              </h4>
+              <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+                {benefit.copy}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-[var(--color-dark)] px-4 py-4 text-center text-sm font-semibold text-white sm:text-base">
+          <span>Hidden offline property</span>
+          <ArrowRight
+            className="text-orange-300"
+            size={18}
+            aria-hidden="true"
+          />
+          <span>Visible online listing</span>
+          <ArrowRight
+            className="text-orange-300"
+            size={18}
+            aria-hidden="true"
+          />
+          <span>Serious enquiries</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -589,7 +834,9 @@ function HeroMiniImageCard({
   featured?: boolean;
 }) {
   return (
-    <div className={`group rounded-3xl p-4 shadow-xl transition duration-300 hover:-translate-y-2 ${featured ? "border border-orange-200 bg-gradient-to-r from-red-50 to-orange-50" : "bg-white"}`}>
+    <div
+      className={`group rounded-3xl p-4 shadow-xl transition duration-300 hover:-translate-y-2 ${featured ? "border border-orange-200 bg-gradient-to-r from-red-50 to-orange-50" : "bg-white"}`}
+    >
       <div className="flex items-center gap-3">
         <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:h-20 sm:w-24">
           <Image
@@ -627,7 +874,9 @@ function BeforeAfterCard({
   const isAfter = tone === "after";
 
   return (
-    <Card className={`group relative overflow-hidden p-0 transition duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-medium)] ${isAfter ? "border-green-100 bg-gradient-to-br from-white to-orange-50" : "border-slate-200 bg-white"}`}>
+    <Card
+      className={`group relative overflow-hidden p-0 transition duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-medium)] ${isAfter ? "border-green-100 bg-gradient-to-br from-white to-orange-50" : "border-slate-200 bg-white"}`}
+    >
       <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
         <Image
           src={image}
@@ -636,16 +885,26 @@ function BeforeAfterCard({
           sizes="(min-width: 768px) 50vw, 100vw"
           className="object-cover transition duration-500 group-hover:scale-105"
         />
-        <div className={`absolute left-4 top-4 rounded-full px-3 py-1 text-xs font-bold text-white shadow-lg ${isAfter ? "bg-green-600" : "bg-slate-700"}`}>
+        <div
+          className={`absolute left-4 top-4 rounded-full px-3 py-1 text-xs font-bold text-white shadow-lg ${isAfter ? "bg-green-600" : "bg-slate-700"}`}
+        >
           {label}
         </div>
       </div>
       <div className="p-6 md:p-8">
-        <h3 className={`text-2xl font-bold ${isAfter ? "text-green-800" : "text-slate-800"}`}>{title}</h3>
+        <h3
+          className={`text-2xl font-bold ${isAfter ? "text-green-800" : "text-slate-800"}`}
+        >
+          {title}
+        </h3>
         <ul className="mt-5 space-y-3 text-sm text-[var(--color-muted)]">
           {points.map((point) => (
             <li key={point} className="flex gap-3">
-              <CheckCircle2 className={`mt-0.5 shrink-0 ${isAfter ? "text-green-600" : "text-red-500"}`} size={18} aria-hidden="true" />
+              <CheckCircle2
+                className={`mt-0.5 shrink-0 ${isAfter ? "text-green-600" : "text-red-500"}`}
+                size={18}
+                aria-hidden="true"
+              />
               <span>{point}</span>
             </li>
           ))}
@@ -669,7 +928,9 @@ function ListingComparison({
   featured?: boolean;
 }) {
   return (
-    <Card className={`p-0 transition duration-300 hover:-translate-y-2 hover:shadow-[var(--shadow-medium)] ${featured ? "border-red-200 bg-gradient-to-br from-red-50 to-orange-50" : ""}`}>
+    <Card
+      className={`p-0 transition duration-300 hover:-translate-y-2 hover:shadow-[var(--shadow-medium)] ${featured ? "border-red-200 bg-gradient-to-br from-red-50 to-orange-50" : ""}`}
+    >
       <div className="p-5 pb-0">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-xl font-black">{title}</h3>
@@ -692,7 +953,13 @@ function ListingComparison({
       <ul className="p-5 pt-6 space-y-3 text-sm text-[var(--color-muted)]">
         {points.map((point) => (
           <li key={point} className="flex gap-3">
-            <CheckCircle2 className={featured ? "text-[var(--color-primary)]" : "text-slate-400"} size={18} aria-hidden="true" />
+            <CheckCircle2
+              className={
+                featured ? "text-[var(--color-primary)]" : "text-slate-400"
+              }
+              size={18}
+              aria-hidden="true"
+            />
             <span>{point}</span>
           </li>
         ))}
