@@ -18,6 +18,8 @@ export default function AdminPropertiesPage() {
   const [loadingImages, setLoadingImages] = useState(false)
   const [loadingVideos,setLoadingVideos] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const [publishMessage, setPublishMessage] = useState<string | null>(null)
 
   /* ================= FETCH QUEUE ================= */
 
@@ -121,41 +123,55 @@ export default function AdminPropertiesPage() {
 
     if (processing) return
     setProcessing(true)
+    setPublishError(null)
+    setPublishMessage(null)
 
     try {
 
-      const { data: authData } = await supabase.auth.getUser()
+      const { data: authData, error: authError } = await supabase.auth.getUser()
       const adminId = authData.user?.id
 
-      if (!adminId) throw new Error("Session expired")
+      if (authError || !adminId) throw new Error("Session expired. Please sign in again.")
 
-      await supabase
-        .from("properties")
-        .update({
-          status: "active",
-          ownership_verified: true,
-          verification_status: "approved",
-          rejection_reason: null,
-          approved_at: new Date().toISOString()
-        })
-        .eq("id", property.id)
-
-      await supabase
-        .from("notifications")
-        .insert({
-          user_id: property.seller_id,
-          title: "Property Published",
-          message: "Your property listing is now live by admin action.",
-          type: "property"
-        })
-
-      await logAction(
-        adminId,
-        "property",
-        property.id,
-        "publish_property",
-        "Property published by admin"
+      const { data: publishedId, error: publishFailure } = await supabase.rpc(
+        "admin_publish_property",
+        { p_property_id: property.id }
       )
+
+      if (publishFailure) {
+        if (publishFailure.code === "PGRST202") {
+          throw new Error("Publishing is not configured. Apply the admin publish database migration.")
+        }
+        throw new Error(publishFailure.message || "Property could not be published.")
+      }
+      if (publishedId !== property.id) {
+        throw new Error("Publication was not confirmed. Refresh the queue and try again.")
+      }
+
+      // Publication is confirmed before attempting secondary notifications.
+      try {
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: property.seller_id,
+            title: "Property Published",
+            message: "Your property listing is now live by admin action.",
+            type: "property"
+          })
+        if (notificationError) throw notificationError
+
+        await logAction(
+          adminId,
+          "property",
+          property.id,
+          "publish_property",
+          "Property published by admin"
+        )
+        setPublishMessage("Property published successfully.")
+      } catch (notificationError) {
+        console.error("Post-publication notification error:", notificationError)
+        setPublishMessage("Property published successfully, but the seller notification could not be sent.")
+      }
 
       setSelected(null)
       setImages([])
@@ -163,14 +179,14 @@ export default function AdminPropertiesPage() {
 
       await fetchQueue()
 
-    } catch (err: any) {
+    } catch (err: unknown) {
 
       console.error("Publish error >>>", err)
-      alert(err.message || "Publish failed")
+      setPublishError(err instanceof Error ? err.message : "Publish failed. Please try again.")
 
+    } finally {
+      setProcessing(false)
     }
-
-    setProcessing(false)
   }
 
   /* ================= REJECT ================= */
@@ -245,6 +261,9 @@ export default function AdminPropertiesPage() {
         Property Listing Control
       </h1>
 
+      {publishError && <p role="alert" className="mb-4 text-red-700">{publishError}</p>}
+      {publishMessage && <p role="status" className="mb-4 text-green-700">{publishMessage}</p>}
+
       <div className="mb-6">
         <Link
           href="/dashboard/add-property"
@@ -280,6 +299,8 @@ export default function AdminPropertiesPage() {
                   setImages([])
                   setVideos([])
                   setSelected(item)
+                  setPublishError(null)
+                  setPublishMessage(null)
                 }}
                 className={`border rounded-md p-3 cursor-pointer hover:bg-gray-100 ${
                   selected?.id === item.id ? "bg-gray-100" : ""
@@ -396,7 +417,7 @@ export default function AdminPropertiesPage() {
                   onClick={()=>publish(selected)}
                   className="bg-green-600 text-white px-4 py-2 rounded"
                 >
-                  Publish Now
+                  {processing ? "Processing..." : "Publish Now"}
                 </button>
 
                 <button
