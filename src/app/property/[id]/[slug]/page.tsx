@@ -245,11 +245,11 @@ encodeURIComponent(`${locality} ${city} ${state}`);
 
 property.property_images = (property.property_images || []).slice().sort((a:any,b:any)=>(a.sort_order ?? 0)-(b.sort_order ?? 0));
 
-/* ================= UI (UNCHANGED) ================= */
+/* ================= UI ================= */
 
 return(
 
-<main className="container-custom py-16">
+<main className="container-custom min-w-0 py-8 sm:py-12 lg:py-16">
 
 {isSellerPreview && (
 <div className="mb-6 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-md text-sm">
@@ -259,22 +259,22 @@ This property is not yet live. Only you can see this preview.
 
 <LocationBreadcrumb state={stateData} city={cityData} locality={localityData} />
 
-<div className="card-soft p-4 mb-8 flex items-center justify-between">
+<div className="card-soft p-4 mb-8 flex flex-wrap items-center justify-between gap-3">
 <div className="text-sm">
 🔥 This property is getting attention. Contact the seller before it's gone.
 </div>
-<a href="#contact" className="bg-primary text-white px-4 py-2 rounded-md text-sm">
+<a href="#contact" className="btn-primary shrink-0 text-sm">
 Contact Seller
 </a>
 </div>
 
-<div className="grid lg:grid-cols-3 gap-12">
+<div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
 
-<div className="lg:col-span-2 space-y-12">
+<div className="min-w-0 space-y-8 lg:col-span-2 lg:space-y-12">
 
 <section className="space-y-3">
 
-<h1 className="text-3xl md:text-4xl font-semibold">
+<h1 className="min-w-0 break-words text-2xl sm:text-3xl md:text-4xl font-semibold">
 {property.title ||
 `${property.property_type} for ${property.listing_type} in ${city}`}
 </h1>
@@ -283,9 +283,9 @@ Contact Seller
 {locality}, {city}
 </p>
 
-<div className="flex items-center gap-6">
+<div className="flex flex-wrap items-center gap-3 sm:gap-6">
 
-<p className="text-3xl font-bold text-primary">
+<p className="min-w-0 break-words text-2xl sm:text-3xl font-bold text-primary">
 ₹ {formattedPrice}
 {property.listing_type==="Rent" && ` ${rentUnit}`}
 </p>
@@ -310,9 +310,9 @@ videos={property.property_videos || []}
 title={property.title}
 />
 
-<section className="card-soft p-6">
+<section className="card-soft min-w-0 p-4 sm:p-6">
 <h2 className="text-xl font-semibold mb-6">Property Highlights</h2>
-<div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+<div className="grid min-w-0 grid-cols-2 gap-4 text-sm md:grid-cols-4 md:gap-6">
 
 {property.bedrooms !== null && (
 <div>
@@ -347,7 +347,7 @@ title={property.title}
 
 
 
-<section className="card-soft p-6">
+<section className="card-soft min-w-0 p-4 sm:p-6">
 <h2 className="text-xl font-semibold mb-6">Property Details</h2>
 
 <div className="grid md:grid-cols-3 gap-6 text-sm">
@@ -379,23 +379,23 @@ title={property.title}
 </div>
 </section>
 
-<section className="card-soft p-6">
+<section className="card-soft min-w-0 p-4 sm:p-6">
 <h2 className="text-xl font-semibold mb-4">Description</h2>
 <PropertyDescription text={property.description} />
 </section>
 
 {property.amenities?.length > 0 && (
-<section className="card-soft p-6">
+<section className="card-soft min-w-0 p-4 sm:p-6">
 <h2 className="text-xl font-semibold mb-6">Amenities</h2>
 <div className="flex flex-wrap gap-2">
 {property.amenities.map((a:string)=>(
-<div key={a} className="chip">{a}</div>
+<div key={a} className="chip max-w-full break-words">{a}</div>
 ))}
 </div>
 </section>
 )}
 
-<section className="card-soft p-6">
+<section className="card-soft min-w-0 p-4 sm:p-6">
 <h2 className="text-xl font-semibold mb-6">Location</h2>
 
 <iframe
@@ -403,7 +403,8 @@ src={`https://maps.google.com/maps?q=${mapQuery}&output=embed`}
 width="100%"
 height="350"
 loading="lazy"
-className="rounded-lg border"
+title="Property location map"
+className="block max-w-full rounded-lg border"
 />
 
 </section>
@@ -450,9 +451,9 @@ className="card-soft overflow-hidden hover:shadow-medium transition"
 
 </div>
 
-<div id="contact" className="space-y-6 lg:sticky lg:top-24 h-fit">
+<div id="contact" className="min-w-0 space-y-6 lg:sticky lg:top-24 h-fit">
 
-<div className="card-soft p-6">
+<div className="card-soft min-w-0 p-4 sm:p-6">
 
 <div className="font-semibold text-lg mb-3">
 Seller
@@ -466,7 +467,7 @@ Seller
 
 <div>
 
-<div className="font-medium">
+<div className="min-w-0 break-words font-medium">
 {sellerData.full_name}
 </div>
 
