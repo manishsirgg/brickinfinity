@@ -1,5 +1,7 @@
 "use client";
 
+import { hasDescriptionContactDetails, DESCRIPTION_CONTACT_MESSAGE } from "@/lib/property-description-policy";
+
 import MediaFilePreview from "@/components/property/MediaFilePreview";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -330,6 +332,7 @@ export default function EditPropertyPage() {
   async function handleSave(){
 
     if (saving) return;
+    if (hasDescriptionContactDetails(property.description)) { setMessage(DESCRIPTION_CONTACT_MESSAGE); return; }
     setSaving(true);
     setMessage("");
     setVideoProgress(null);
@@ -570,11 +573,15 @@ export default function EditPropertyPage() {
           />
 
           <textarea className="textarea-premium"
+            aria-describedby="description-contact-hint"
+            aria-invalid={hasDescriptionContactDetails(property.description)}
             value={property.description}
             onChange={(e)=>
               setProperty({...property,description:e.target.value})
             }
           />
+
+          <p id="description-contact-hint" className="text-sm text-slate-600">Do not include phone numbers, email addresses, websites or social handles. Use the Contact Seller panel.</p>
 
           {isSaleListingType(property.listing_type) ? (
             <div>
