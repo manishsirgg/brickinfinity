@@ -1,3 +1,4 @@
+export const TITLE_CONTACT_MESSAGE = "Remove phone numbers, email addresses, websites and social/contact links from the title. Buyers can contact you through the listing's Contact Seller panel.";
 export const DESCRIPTION_CONTACT_MESSAGE = "Remove phone numbers, email addresses, websites and social/contact links from the description. Buyers can contact you through the listing's Contact Seller panel.";
 
 // Keep these patterns aligned with the database description guard migration.
@@ -15,3 +16,6 @@ export function hasDescriptionContactDetails(value: string | null | undefined) {
     .replace(/[०-९٠-٩]/g, digit => String(digit.charCodeAt(0) - (digit >= "०" ? 0x0966 : 0x0660)));
   return contactPatterns.some(pattern => pattern.test(normalized));
 }
+
+// Titles and descriptions share the same detection rules.
+export const hasPropertyContactDetails = hasDescriptionContactDetails;
