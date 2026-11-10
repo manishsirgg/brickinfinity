@@ -61,10 +61,12 @@ export async function uploadPropertyMedia({
   propertyId,
   images,
   video,
+  onProgress,
 }: {
   propertyId: string;
   images: File[];
   video?: File | null;
+  onProgress?: (message: string) => void;
 }) {
 
   const uploadedImages: string[] = [];
@@ -76,6 +78,7 @@ export async function uploadPropertyMedia({
 
   for (let i = 0; i < images.length; i++) {
 
+    onProgress?.(`Uploading photo ${i + 1} of ${images.length}...`);
     const img = images[i];
 
     const compressed = await imageCompression(img, {
@@ -106,6 +109,7 @@ export async function uploadPropertyMedia({
   /* VIDEO UPLOAD */
 
   if (video) {
+    onProgress?.("Uploading video...");
 
     const filename = sanitizeFileName(
       `video-${Date.now()}-${video.name}`

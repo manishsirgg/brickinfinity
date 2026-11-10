@@ -154,7 +154,7 @@ export default async function BuyPage({
       created_at,
       cities(name,state_id),
       localities(name),
-      property_images(image_url)
+      property_images(image_url,sort_order)
       `,
       { count: "exact" }
     )

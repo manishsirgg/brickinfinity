@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCoverImage } from "@/lib/property-images";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -28,7 +29,7 @@ export default async function SavedPropertiesPage() {
           status,
           ownership_verified,
           deleted_at,
-          property_images(image_url)
+          property_images(image_url,sort_order)
         )
       `)
       .eq("user_id", session.user.id)
@@ -89,8 +90,7 @@ export default async function SavedPropertiesPage() {
         {properties.map((p: any) => {
 
           const img =
-            p.property_images?.[0]?.image_url ||
-            "/placeholder.jpg";
+            getCoverImage(p.property_images);
 
           const propertyUrl =
             `/property/${p.id}/${p.slug}`;
@@ -103,7 +103,7 @@ export default async function SavedPropertiesPage() {
               className="group border rounded-xl overflow-hidden hover:shadow-xl transition transform hover:-translate-y-1"
             >
 
-              <div className="relative h-48 w-full">
+              <div className="relative aspect-square w-full">
 
                 <Image
                   src={img}

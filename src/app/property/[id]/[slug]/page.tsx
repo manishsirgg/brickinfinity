@@ -1,4 +1,6 @@
+import PropertyDescription from "@/components/property/PropertyDescription";
 import { createClient } from "@/lib/supabase/server";
+import { getCoverImage } from "@/lib/property-images";
 import { createServiceClient } from "@/lib/supabase/service";
 import { notFound, redirect } from "next/navigation";
 import { Metadata } from "next";
@@ -419,9 +421,7 @@ property.property_images?.length
 
 <section className="card-soft p-6">
 <h2 className="text-xl font-semibold mb-4">Description</h2>
-<p className="text-muted leading-relaxed">
-{property.description}
-</p>
+<PropertyDescription text={property.description} />
 </section>
 
 {property.amenities?.length > 0 && (
@@ -460,7 +460,7 @@ More properties in {locality}
 {similarProperties.map((p:any)=>{
 
 const image =
-p.property_images?.[0]?.image_url || "/placeholder.jpg";
+getCoverImage(p.property_images);
 
 const price =
 new Intl.NumberFormat("en-IN").format(p.price);
@@ -472,7 +472,7 @@ href={`/property/${p.id}/${p.slug}`}
 className="card-soft overflow-hidden hover:shadow-medium transition"
 >
 
-<img src={image} className="h-40 w-full object-cover"/>
+<img src={image} className="aspect-square w-full object-cover"/>
 
 <div className="p-4 space-y-1">
 <div className="font-medium">{p.property_type}</div>
