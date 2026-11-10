@@ -1,3 +1,4 @@
+import LocationBreadcrumb from "@/components/property/LocationBreadcrumb";
 import PropertyDescription from "@/components/property/PropertyDescription";
 import { createClient } from "@/lib/supabase/server";
 import { getCoverImage } from "@/lib/property-images";
@@ -33,8 +34,8 @@ const { data: property } = await supabase
     property_type,
     listing_type,
     bedrooms,
-    cities(name, states(name)),
-    localities(name),
+    cities(id,name, states(id,name)),
+    localities(id,name),
     property_images(image_url,sort_order)
   `)
   .eq("id", id)
@@ -130,8 +131,8 @@ const { data:property,error } = await supabase
 *,
 property_images(id,image_url,sort_order),
 property_videos(video_url),
-cities(name, states(name)),
-localities(name)
+cities(id,name, states(id,name)),
+localities(id,name)
 `)
 .eq("id",id)
 .eq("status", "active")
@@ -143,20 +144,12 @@ if(error || !property) notFound();
 
 /* SAFE RELATIONS */
 
-const city =
-Array.isArray(property.cities)
-  ? property.cities[0]?.name
-  : property.cities?.name;
-
-const state =
-Array.isArray(property.cities)
-  ? property.cities[0]?.states?.name
-  : property.cities?.states?.name;
-
-const locality =
-Array.isArray(property.localities)
-  ? property.localities[0]?.name
-  : property.localities?.name;
+const cityData = Array.isArray(property.cities) ? property.cities[0] : property.cities;
+const stateData = Array.isArray(cityData?.states) ? cityData.states[0] : cityData?.states;
+const localityData = Array.isArray(property.localities) ? property.localities[0] : property.localities;
+const city = cityData?.name;
+const state = stateData?.name;
+const locality = localityData?.name;
 
 /* ================= VISIBILITY GUARD ================= */
 
@@ -264,32 +257,7 @@ This property is not yet live. Only you can see this preview.
 </div>
 )}
 
-<div className="text-sm text-muted mb-6">
-
-<a href="/" className="hover:underline">Home</a>
-<span className="mx-2">›</span>
-
-{state && (
-<>
-<a href={`/properties/buy?state=${encodeURIComponent(state)}`} className="hover:underline">
-{state}
-</a>
-<span className="mx-2">›</span>
-</>
-)}
-
-{city && (
-<>
-<a href={`/properties/buy?city=${encodeURIComponent(city)}`} className="hover:underline">
-{city}
-</a>
-<span className="mx-2">›</span>
-</>
-)}
-
-<span>{locality}</span>
-
-</div>
+<LocationBreadcrumb state={stateData} city={cityData} locality={localityData} />
 
 <div className="card-soft p-4 mb-8 flex items-center justify-between">
 <div className="text-sm">

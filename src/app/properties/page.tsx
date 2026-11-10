@@ -1,3 +1,4 @@
+import { resolvePropertyLocation, propertyResultsPageHref } from "@/lib/property-location";
 import { createServiceClient } from "@/lib/supabase/service";
 import PropertyCard from "@/components/property/PropertyCard";
 import { sortFeaturedPropertiesFirst } from "@/lib/property-featured";
@@ -46,6 +47,10 @@ type PropertiesSearchParams = {
   listing_type?: string;
   city?: string;
   state?: string;
+  locality?: string;
+  state_id?: string;
+  city_id?: string;
+  locality_id?: string;
   bedrooms?: string;
   minPrice?: string;
   min_price?: string;
@@ -158,6 +163,13 @@ export default async function PropertiesSearchPage({
     : { cityIds: [], localityIds: [] };
   const city = cleanString(resolvedSearchParams.city);
   const state = cleanString(resolvedSearchParams.state);
+  const location = await resolvePropertyLocation(supabase, {
+    state, city, locality: cleanString(resolvedSearchParams.locality),
+    state_id: cleanString(resolvedSearchParams.state_id),
+    city_id: cleanString(resolvedSearchParams.city_id),
+    locality_id: cleanString(resolvedSearchParams.locality_id),
+  });
+  const locationLabel = location.locality?.name || location.city?.name || location.state?.name;
   const bedrooms = cleanString(resolvedSearchParams.bedrooms);
   const minPrice = Number(
     cleanString(
@@ -170,42 +182,20 @@ export default async function PropertiesSearchPage({
     ),
   );
   const propertyTypeDisplayName = getPropertyTypeDisplayName(propertyType);
-  const currentPage = Math.max(
-    1,
-    Number(resolvedSearchParams.page || "1") || 1,
-  );
+  const requestedPage = Number(resolvedSearchParams.page || "1");
+  const currentPage = Number.isFinite(requestedPage) ? Math.max(1, Math.floor(requestedPage)) : 1;
   const from = (currentPage - 1) * pageSize;
   const to = from + pageSize - 1;
 
   let query = supabase
     .from("properties")
     .select(
-      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,cities(name),localities(name),property_images(image_url,sort_order)`,
+      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,${location.state ? "cities!inner(name)" : "cities(name)"},localities(name),property_images(image_url,sort_order)`,
       { count: "exact" },
     )
     .eq("status", "active")
     .eq("verification_status", "approved")
     .is("deleted_at", null);
-
-  let stateId: string | undefined;
-  if (state) {
-    const { data } = await supabase
-      .from("states")
-      .select("id")
-      .ilike("name", state)
-      .maybeSingle();
-    stateId = data?.id;
-  }
-
-  let cityId: string | undefined;
-  if (city) {
-    const { data } = await supabase
-      .from("cities")
-      .select("id")
-      .ilike("name", city)
-      .maybeSingle();
-    cityId = data?.id;
-  }
 
   if (listingType === "Sale" || listingType === "Rent")
     query = query.eq("listing_type", listingType);
@@ -217,8 +207,10 @@ export default async function PropertiesSearchPage({
     query = query.gte("price", minPrice);
   if (Number.isFinite(maxPrice) && maxPrice > 0)
     query = query.lte("price", maxPrice);
-  if (cityId) query = query.eq("city_id", cityId);
-  else if (stateId) query = query.eq("cities.state_id", stateId);
+  if (location.notFound) query = query.in("id", []);
+  if (location.state) query = query.eq("cities.state_id", location.state.id);
+  if (location.city) query = query.eq("city_id", location.city.id);
+  if (location.locality) query = query.eq("locality_id", location.locality.id);
   if (keyword) {
     const keywordOr = buildPropertyKeywordOr(keywordTerms, keywordLocationIds);
 
@@ -264,8 +256,11 @@ export default async function PropertiesSearchPage({
     ? `Search results for “${keyword}”`
     : propertyTypeDisplayName
       ? `${propertyTypeDisplayName} Properties`
-      : "Property Results";
+      : locationLabel ? `Properties in ${locationLabel}` : "Property Results";
   const activeSearchChips = [
+    location.state ? { label: "State", value: location.state.name } : null,
+    location.city ? { label: "City", value: location.city.name } : null,
+    location.locality ? { label: "Locality", value: location.locality.name } : null,
     keyword ? { label: "Search", value: keyword } : null,
     propertyTypeDisplayName
       ? { label: "Property type", value: propertyTypeDisplayName }
@@ -340,6 +335,13 @@ export default async function PropertiesSearchPage({
           <PropertyCard key={property.id} property={property} />
         ))}
       </div>
+      {totalMatches > pageSize && (
+        <nav aria-label="Property results pages" className="flex items-center justify-center gap-4">
+          {currentPage > 1 && <Link href={propertyResultsPageHref(resolvedSearchParams, currentPage - 1)} className="rounded-lg border px-4 py-2">Previous</Link>}
+          <span>Page {currentPage} of {Math.ceil(totalMatches / pageSize)}</span>
+          {currentPage * pageSize < totalMatches && <Link href={propertyResultsPageHref(resolvedSearchParams, currentPage + 1)} className="rounded-lg border px-4 py-2">Next</Link>}
+        </nav>
+      )}
     </main>
   );
 }
