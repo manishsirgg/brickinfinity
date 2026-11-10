@@ -1,5 +1,6 @@
 "use client";
 
+import { getCoverImage } from "@/lib/property-images";
 import { useEffect, useState, useCallback } from "react";
 import FeaturedListingModal from "@/components/property-featured/FeaturedListingModal";
 import { createClient } from "@/lib/supabase/client";
@@ -35,7 +36,7 @@ export default function MyListingsPage() {
   deleted_at: string | null;
   views_count: number | null;
   created_at: string;
-  property_images: { image_url: string }[] | null;
+  property_images: { image_url: string; sort_order?: number | null }[] | null;
 };
 
 const [properties,setProperties] = useState<ListingProperty[]>([]);
@@ -109,7 +110,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
             deleted_at,
             views_count,
             created_at,
-            property_images(image_url)
+            property_images(image_url,sort_order)
           `,{count:"exact"})
           .eq("seller_id",profileId)
           .is("deleted_at",null)
@@ -341,8 +342,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
         {properties.map(property=>{
 
           const image =
-            property.property_images?.[0]?.image_url ||
-            "/placeholder.jpg";
+            getCoverImage(property.property_images);
 
           const propertyUrl =
             `/property/${property.id}/${property.slug}`;
@@ -360,7 +360,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
 
               <img
                 src={image}
-                className="h-52 w-full object-cover"
+                className="aspect-square w-full object-cover"
                 alt="Property"
               />
 

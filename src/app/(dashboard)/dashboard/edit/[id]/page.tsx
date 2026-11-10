@@ -1,5 +1,6 @@
 "use client";
 
+import MediaFilePreview from "@/components/property/MediaFilePreview";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadPropertyMedia } from "@/lib/storage/uploadImage";
@@ -44,6 +45,8 @@ export default function EditPropertyPage() {
   const [localityName,setLocalityName] = useState("");
 
   const [newImages,setNewImages] = useState<File[]>([]);
+  const [cover, setCover] = useState<string | File | null>(null);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [video,setVideo] = useState<File | null>(null);
   const [ownershipDocs,setOwnershipDocs] = useState<File[]>([]);
   const [amenities,setAmenities] = useState<string[]>([]);
@@ -165,10 +168,18 @@ export default function EditPropertyPage() {
   }
 
   function handleImageSelect(files:FileList){
-    setNewImages(Array.from(files));
+    const selected = Array.from(files);
+    const invalid = selected.find(file => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024);
+    if (invalid) { setMessage(`${invalid.name}: choose a JPG, PNG or WebP image up to 10 MB.`); return; }
+    setMessage("");
+    setNewImages(prev => [...prev, ...selected]);
   }
 
   function handleVideoSelect(file:File){
+    if (!["video/mp4", "video/webm", "video/quicktime"].includes(file.type) || file.size > 50 * 1024 * 1024) {
+      setMessage("Choose an MP4, WebM or MOV video up to 50 MB."); return;
+    }
+    setMessage("");
     setVideo(file);
   }
 
@@ -265,11 +276,13 @@ export default function EditPropertyPage() {
 
   async function removeExistingImage(id:string){
 
-    await supabase
+    const { error } = await supabase
       .from("property_images")
       .delete()
       .eq("id",id);
 
+    if (error) { setMessage(error.message); return; }
+    if (cover === id) setCover(null);
     setProperty({
       ...property,
       property_images:
@@ -300,23 +313,23 @@ export default function EditPropertyPage() {
     });
   }
 
-  async function persistImageOrder(){
-    if(!property?.property_images?.length) return;
-
-    const updates = property.property_images.map((img:any,index:number)=>(
-      supabase
-        .from("property_images")
-        .update({ sort_order:index })
-        .eq("id",img.id)
-    ));
-
-    await Promise.all(updates);
+  async function persistImageOrder(images: { id: string; image_url: string }[]) {
+    const selectedId = typeof cover === "string" ? cover : null;
+    const ordered = selectedId ? [...images.filter(img => img.id === selectedId), ...images.filter(img => img.id !== selectedId)] : images;
+    for (const [index, img] of ordered.entries()) {
+      const { error } = await supabase.from("property_images")
+        .update({ sort_order: index }).eq("id", img.id).eq("property_id", propertyId).select("id").single();
+      if (error) throw new Error(`Could not save image order: ${error.message}`);
+    }
   }
   /* ================= SAVE ================= */
 
   async function handleSave(){
 
+    if (saving) return;
     setSaving(true);
+    setMessage("");
+    setUploadStatus("Saving property details...");
 
     try{
 
@@ -364,7 +377,7 @@ export default function EditPropertyPage() {
         ? (monthlyRate ?? dailyRate ?? hourlyRate)
         : Number(property.price);
 
-      await supabase
+      const { error: propertyError } = await supabase
         .from("properties")
         .update({
           title:property.title,
@@ -404,9 +417,10 @@ export default function EditPropertyPage() {
             : property.verification_status,
           updated_at:new Date().toISOString()
         })
-        .eq("id",propertyId);
+        .eq("id",propertyId).select("id").single();
+      if (propertyError) throw new Error(propertyError.message);
 
-      await persistImageOrder();
+      let allImages = [...property.property_images];
 
       /* MEDIA */
 
@@ -416,11 +430,12 @@ export default function EditPropertyPage() {
           await uploadPropertyMedia({
             propertyId,
             images:newImages,
-            video
+            video,
+            onProgress: setUploadStatus
           });
 
         if(media.images?.length){
-          await supabase
+          const { data: addedImages, error: imageError } = await supabase
             .from("property_images")
             .insert(
               media.images.map((url:string,index:number)=>({
@@ -428,18 +443,38 @@ export default function EditPropertyPage() {
                 image_url:url,
                 sort_order:(property.property_images?.length || 0) + index
               }))
-            );
+            ).select("id,image_url,sort_order");
+          if (imageError) throw new Error(imageError.message);
+          const uploaded = media.images.map(url => addedImages?.find(img => img.image_url === url)).filter(Boolean);
+          allImages = [...allImages, ...uploaded];
+          if (cover instanceof File) {
+            const coverUrl = media.images[newImages.indexOf(cover)];
+            allImages = [...allImages.filter(img => img.image_url === coverUrl), ...allImages.filter(img => img.image_url !== coverUrl)];
+            setCover(allImages[0]?.id || null);
+          }
+          setNewImages([]);
+          setProperty((prev: any) => ({ ...prev, property_images: allImages }));
         }
 
         if(media.video){
-          await supabase
+          const { data: savedVideo, error: videoError } = await supabase
             .from("property_videos")
             .insert({
               property_id:propertyId,
               video_url:media.video
-            });
+            }).select("id,video_url").single();
+          if (videoError) throw new Error(videoError.message);
+          if (property.property_videos.length) {
+            const { error: removeError } = await supabase.from("property_videos").delete().in("id", property.property_videos.map((item: { id: string }) => item.id));
+            if (removeError) throw new Error(removeError.message);
+          }
+          setProperty((prev: any) => ({ ...prev, property_videos: [savedVideo] }));
+          setVideo(null);
         }
       }
+
+      setUploadStatus("Saving cover image and photo order...");
+      await persistImageOrder(allImages);
 
       /* OWNERSHIP */
 
@@ -493,6 +528,7 @@ export default function EditPropertyPage() {
     }
 
     setSaving(false);
+    setUploadStatus("");
   }
 
   /* ================= UI ================= */
@@ -506,9 +542,9 @@ export default function EditPropertyPage() {
 
       <h1 className="text-3xl font-semibold">Edit Property</h1>
 
-      {message && <div className="badge-success">{message}</div>}
+      {message && <div role="status" className="rounded-lg border p-4">{message}</div>}
 
-      <div className="card-soft p-8 space-y-8">
+      <fieldset disabled={saving} className="card-soft min-w-0 p-8 space-y-8 disabled:opacity-75">
 
         {/* BASIC */}
 
@@ -789,64 +825,63 @@ export default function EditPropertyPage() {
           </div>
         </section>
 
-        {/* IMAGES */}
-
         <section className="space-y-4">
-          <h3 className="text-lg font-semibold">Property Images</h3>
-
-          <div className="grid grid-cols-3 gap-3">
-            {property.property_images.map((img:any)=>(
-              <div key={img.id} className="relative">
-                <img src={img.image_url} className="rounded-lg border"/>
-                {img.sort_order === 0 && (
-                  <span className="absolute left-1 top-1 bg-emerald-600 text-white text-[10px] px-2 py-1 rounded">Cover</span>
-                )}
-                <div className="absolute top-1 right-1 flex gap-1">
-                  <button type="button"
-                    onClick={()=>moveImage(img.id,-1)}
-                    className="bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    ↑
+          <h3 className="text-lg font-semibold">Property photos</h3>
+          <p className="text-sm text-slate-600">Choose a cover for your listing cards. Photo order and cover are saved with Save Changes.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {property.property_images.map((img:any, index:number) => (
+              <div key={img.id} className="overflow-hidden rounded-xl border bg-white">
+                <img src={img.image_url} alt={`Property photo ${index + 1}`} className="aspect-square w-full object-cover" />
+                <div className="p-2 space-y-2">
+                  <button type="button" aria-pressed={cover === img.id || (!cover && index === 0)}
+                    onClick={() => setCover(img.id)} className="w-full rounded border px-2 py-2 text-sm aria-pressed:bg-emerald-100 aria-pressed:text-emerald-800">
+                    {cover === img.id || (!cover && index === 0) ? "✓ Cover image" : "Set as cover"}
                   </button>
-                  <button type="button"
-                    onClick={()=>moveImage(img.id,1)}
-                    className="bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    ↓
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button type="button" disabled={index === 0} aria-label={`Move photo ${index + 1} earlier`} onClick={() => moveImage(img.id,-1)} className="rounded border p-2 disabled:opacity-40">←</button>
+                    <button type="button" disabled={index === property.property_images.length - 1} aria-label={`Move photo ${index + 1} later`} onClick={() => moveImage(img.id,1)} className="rounded border p-2 disabled:opacity-40">→</button>
+                    <button type="button" onClick={() => removeExistingImage(img.id)} className="rounded border p-2 text-red-700">Remove</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {newImages.map((file,index) => (
+              <div key={`${file.name}-${index}`} className="overflow-hidden rounded-xl border border-blue-200">
+                <MediaFilePreview file={file} />
+                <div className="p-2 space-y-2 text-sm">
+                  <p className="truncate">{file.name}</p>
+                  <p className="text-xs text-slate-500">New · {(file.size / 1024 / 1024).toFixed(1)} MB · Not saved yet</p>
+                  <button type="button" aria-pressed={cover === file || (!cover && !property.property_images.length && index === 0)} onClick={() => setCover(file)} className="w-full rounded border p-2 aria-pressed:bg-emerald-100">
+                    {cover === file || (!cover && !property.property_images.length && index === 0) ? "✓ Cover image" : "Set as cover"}
                   </button>
-                  <button type="button"
-                    onClick={()=>removeExistingImage(img.id)}
-                    className="bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    Remove
-                  </button>
+                  <button type="button" onClick={() => { setNewImages(prev => prev.filter((_, i) => i !== index)); if (cover === file) setCover(null); }} className="text-red-700">Remove selected photo</button>
                 </div>
               </div>
             ))}
           </div>
-
-          <input type="file" multiple accept="image/*"
-            className="input-premium"
-            onChange={(e)=>
-              e.target.files && handleImageSelect(e.target.files)
-            }
-          />
+          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 focus-within:ring-2 focus-within:ring-blue-500">
+            <span className="block font-semibold">＋ Add photos</span>
+            <span className="block text-sm text-slate-500">JPG, PNG or WebP · Up to 10 MB each · Select multiple files</span>
+            <input aria-label="Add property photos" type="file" multiple accept="image/jpeg,image/png,image/webp" className="mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-white"
+              onChange={e => { if (e.target.files) handleImageSelect(e.target.files); e.target.value = ""; }} />
+          </label>
         </section>
 
-        {/* VIDEO */}
-
         <section className="space-y-4">
-          <h3 className="text-lg font-semibold">Property Video</h3>
-
-          {property.property_videos?.[0] && (
-            <video controls className="rounded-lg border"
-              src={property.property_videos[0].video_url}/>
+          <h3 className="text-lg font-semibold">Property video</h3>
+          {video ? <MediaFilePreview file={video} video /> : property.property_videos?.[0] && (
+            <video controls preload="metadata" className="aspect-video w-full rounded-xl bg-black" src={property.property_videos[0].video_url} />
           )}
-
-          <input type="file" accept="video/*"
-            className="input-premium"
-            onChange={(e)=>{
-              const file=e.target.files?.[0];
-              if(file) handleVideoSelect(file);
-            }}
-          />
+          {video && <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span>{video.name} · {(video.size / 1024 / 1024).toFixed(1)} MB · Not saved yet</span>
+            <button type="button" onClick={() => setVideo(null)} className="text-red-700">Cancel video selection</button>
+          </div>}
+          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 focus-within:ring-2 focus-within:ring-blue-500">
+            <span className="block font-semibold">{property.property_videos.length ? "Replace video" : "＋ Add a video"}</span>
+            <span className="block text-sm text-slate-500">MP4, WebM or MOV · Up to 50 MB · Saved when you click Save Changes</span>
+            <input aria-label="Choose property video" type="file" accept="video/mp4,video/webm,video/quicktime" className="mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-white"
+              onChange={e => { const file = e.target.files?.[0]; if (file) handleVideoSelect(file); e.target.value = ""; }} />
+          </label>
         </section>
 
         {/* OWNERSHIP */}
@@ -877,10 +912,10 @@ export default function EditPropertyPage() {
           onClick={handleSave}
           disabled={saving}
           className="btn-primary w-full">
-          {saving ? "Saving..." : "Save Changes"}
+          {saving ? uploadStatus || "Saving..." : "Save Changes"}
         </button>
 
-      </div>
+      </fieldset>
 
     </main>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { getCoverImage } from "@/lib/property-images";
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
@@ -66,7 +67,7 @@ export default function LeadsPage() {
               property_type,
               price,
               status,
-              property_images(image_url)
+              property_images(image_url,sort_order)
             )
           `)
           .eq("seller_id",sellerId)
@@ -203,8 +204,7 @@ export default function LeadsPage() {
               : lead.properties;
 
           const image =
-            property?.property_images?.[0]?.image_url ||
-            "/placeholder.jpg";
+            getCoverImage(property.property_images);
 
           const whatsappLink = lead.buyer_phone
             ? `https://wa.me/91${lead.buyer_phone.replace(/\D/g,"")}`

@@ -180,7 +180,7 @@ export default async function PropertiesSearchPage({
   let query = supabase
     .from("properties")
     .select(
-      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,cities(name),localities(name),property_images(image_url)`,
+      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,cities(name),localities(name),property_images(image_url,sort_order)`,
       { count: "exact" },
     )
     .eq("status", "active")

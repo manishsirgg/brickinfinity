@@ -1,5 +1,6 @@
 "use client"
 
+import { getCoverImage } from "@/lib/property-images";
 import Link from "next/link"
 import { isPropertyFeaturedActive } from "@/lib/property-featured"
 
@@ -8,7 +9,7 @@ type PropertyCardProperty = {
   slug?: string | null
   property_type?: string | null
   listing_type?: string | null
-  property_images?: { image_url?: string | null }[] | null
+  property_images?: { image_url?: string | null; sort_order?: number | null }[] | null
   hourly_rate?: number | null
   daily_rate?: number | null
   monthly_rate?: number | null
@@ -63,7 +64,7 @@ function hasMeaningfulValue(value: unknown): boolean {
 }
 
 export default function PropertyCard({ property }: Props) {
-  const image = property?.property_images?.[0]?.image_url || "/placeholder.jpg"
+  const image = getCoverImage(property.property_images)
 
   const propertyType = hasMeaningfulValue(property?.property_type) ? String(property.property_type).trim() : null
   const locality = hasMeaningfulValue(property?.localities?.name) ? String(property.localities?.name).trim() : null
@@ -110,7 +111,7 @@ export default function PropertyCard({ property }: Props) {
       <div className="relative overflow-hidden">
         <img
           src={image}
-          className="h-56 md:h-60 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="aspect-square w-full object-cover transition-transform duration-300 group-hover:scale-105"
           alt={property?.property_type || "Property"}
         />
 

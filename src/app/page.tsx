@@ -32,7 +32,7 @@ export default async function HomePage() {
       ownership_verified,
       cities(name),
       localities(name),
-      property_images(image_url)
+      property_images(image_url,sort_order)
     `;
 
     let richQuery = supabase

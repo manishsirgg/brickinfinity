@@ -1,5 +1,6 @@
 "use client";
 
+import { getCoverImage } from "@/lib/property-images";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
@@ -73,7 +74,7 @@ export default function SellerDashboard() {
             views_count,
             status,
             created_at,
-            property_images(image_url)
+            property_images(image_url,sort_order)
           `)
           .eq("seller_id", sellerId)
           .is("deleted_at", null);
@@ -312,8 +313,7 @@ export default function SellerDashboard() {
 
             <img
               src={
-                topProperty.property_images?.[0]?.image_url ||
-                "/placeholder.jpg"
+                getCoverImage(topProperty.property_images)
               }
               className="w-24 h-24 object-cover rounded-md"
             />
