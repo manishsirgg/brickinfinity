@@ -291,7 +291,7 @@ Please share more details.`
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-primary text-white py-3 rounded-md"
+          className="btn-primary w-full"
         >
           {loading ? "Sending..." : "Send Enquiry"}
         </button>
