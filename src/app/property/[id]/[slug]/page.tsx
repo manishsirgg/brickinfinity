@@ -337,11 +337,9 @@ title={property.title}
 </section>
 
 <PropertyGallery
-images={
-property.property_images?.length
-? property.property_images
-: [{ image_url:"/placeholder.jpg"}]
-}
+images={property.property_images || []}
+videos={property.property_videos || []}
+title={property.title}
 />
 
 <section className="card-soft p-6">
@@ -379,13 +377,7 @@ property.property_images?.length
 </div>
 </section>
 
-{property.property_videos?.[0] && (
-<section className="card-soft p-4">
-<video controls className="rounded-lg w-full max-h-[500px]">
-<source src={property.property_videos[0].video_url} type="video/mp4"/>
-</video>
-</section>
-)}
+
 
 <section className="card-soft p-6">
 <h2 className="text-xl font-semibold mb-6">Property Details</h2>
