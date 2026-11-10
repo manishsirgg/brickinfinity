@@ -1,7 +1,7 @@
 "use client";
 
 import MediaFilePreview from "@/components/property/MediaFilePreview";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadPropertyMedia } from "@/lib/storage/uploadImage";
 import { useRouter, useParams } from "next/navigation";
@@ -47,6 +47,8 @@ export default function EditPropertyPage() {
   const [newImages,setNewImages] = useState<File[]>([]);
   const [cover, setCover] = useState<string | File | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
+  const uploadedVideo = useRef<{ file: File; url: string } | null>(null);
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
   const [video,setVideo] = useState<File | null>(null);
   const [ownershipDocs,setOwnershipDocs] = useState<File[]>([]);
   const [amenities,setAmenities] = useState<string[]>([]);
@@ -180,6 +182,7 @@ export default function EditPropertyPage() {
       setMessage("Choose an MP4, WebM or MOV video up to 50 MB."); return;
     }
     setMessage("");
+    setVideoProgress(null);
     setVideo(file);
   }
 
@@ -329,6 +332,7 @@ export default function EditPropertyPage() {
     if (saving) return;
     setSaving(true);
     setMessage("");
+    setVideoProgress(null);
     setUploadStatus("Saving property details...");
 
     try{
@@ -430,8 +434,9 @@ export default function EditPropertyPage() {
           await uploadPropertyMedia({
             propertyId,
             images:newImages,
-            video,
-            onProgress: setUploadStatus
+            video: uploadedVideo.current?.file === video ? null : video,
+            onProgress: setUploadStatus,
+            onVideoProgress: setVideoProgress
           });
 
         if(media.images?.length){
@@ -456,20 +461,26 @@ export default function EditPropertyPage() {
           setProperty((prev: any) => ({ ...prev, property_images: allImages }));
         }
 
+        if (media.video && video) uploadedVideo.current = { file: video, url: media.video };
+        if (!media.video && uploadedVideo.current?.file === video) {
+          media.video = uploadedVideo.current!.url;
+          setVideoProgress(100);
+        }
+
         if(media.video){
-          const { data: savedVideo, error: videoError } = await supabase
-            .from("property_videos")
-            .insert({
-              property_id:propertyId,
-              video_url:media.video
-            }).select("id,video_url").single();
-          if (videoError) throw new Error(videoError.message);
-          if (property.property_videos.length) {
-            const { error: removeError } = await supabase.from("property_videos").delete().in("id", property.property_videos.map((item: { id: string }) => item.id));
-            if (removeError) throw new Error(removeError.message);
+          setUploadStatus("Saving video to listing...");
+          const { data: savedVideo, error: videoError } = await supabase.rpc("save_property_video", {
+            p_property_id: propertyId,
+            p_video_url: media.video,
+          }).single<{ id: string; video_url: string }>();
+          if (videoError) {
+            if (videoError.code === "PGRST202") throw new Error("Apply the save_property_video database migration to enable video saving.");
+            throw new Error(`Video uploaded, but could not be saved to the listing: ${videoError.message}`);
           }
+          if (!savedVideo?.id) throw new Error("Video saving was not confirmed. Please try again.");
           setProperty((prev: any) => ({ ...prev, property_videos: [savedVideo] }));
           setVideo(null);
+          uploadedVideo.current = null;
         }
       }
 
@@ -871,6 +882,15 @@ export default function EditPropertyPage() {
           <h3 className="text-lg font-semibold">Property video</h3>
           {video ? <MediaFilePreview file={video} video /> : property.property_videos?.[0] && (
             <video controls preload="metadata" className="aspect-video w-full rounded-xl bg-black" src={property.property_videos[0].video_url} />
+          )}
+          {videoProgress !== null && (
+            <div className="space-y-2" aria-live="polite">
+              <div className="flex justify-between text-sm font-medium">
+                <span>{saving ? (videoProgress < 100 ? "Uploading video" : "Video transferred · saving listing") : message === "Property updated successfully." ? "Video saved" : videoProgress < 100 ? "Video upload stopped · try again" : "Video transfer complete · listing not saved"}</span>
+                <span>{videoProgress}%</span>
+              </div>
+              <progress aria-label="Video upload progress" value={videoProgress} max={100} className="h-3 w-full accent-red-600" />
+            </div>
           )}
           {video && <div className="flex flex-wrap items-center gap-3 text-sm">
             <span>{video.name} · {(video.size / 1024 / 1024).toFixed(1)} MB · Not saved yet</span>

@@ -1,3 +1,4 @@
+import { uploadVideo } from "@/lib/storage/uploadVideo";
 import imageCompression from "browser-image-compression";
 import { createClient } from "@/lib/supabase/client";
 
@@ -62,11 +63,13 @@ export async function uploadPropertyMedia({
   images,
   video,
   onProgress,
+  onVideoProgress,
 }: {
   propertyId: string;
   images: File[];
   video?: File | null;
   onProgress?: (message: string) => void;
+  onVideoProgress?: (percent: number) => void;
 }) {
 
   const uploadedImages: string[] = [];
@@ -117,11 +120,7 @@ export async function uploadPropertyMedia({
 
     const path = `${propertyId}/video/${filename}`;
 
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(path, video);
-
-    if (error) throw error;
+    await uploadVideo(path, video, onVideoProgress);
 
     const { data } = supabase.storage
       .from(bucket)
