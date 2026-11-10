@@ -1,5 +1,7 @@
 "use client";
 
+import { hasDescriptionContactDetails, DESCRIPTION_CONTACT_MESSAGE } from "@/lib/property-description-policy";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -253,6 +255,7 @@ async function loadLocalities(cityId:string){
     if(step===1){
       if(form.title.length<10) return "Title must be at least 10 characters.";
       if(!form.description) return "Description required.";
+      if(hasDescriptionContactDetails(form.description)) return DESCRIPTION_CONTACT_MESSAGE;
       if(isSaleListingType(form.listingType) && !form.price) return "Please enter the expected selling price.";
     }
     if(step===3){
@@ -359,6 +362,8 @@ async function loadLocalities(cityId:string){
 const handleSubmit = async (e:React.FormEvent)=>{
 
   e.preventDefault();
+
+  if (hasDescriptionContactDetails(form.description)) { setError(DESCRIPTION_CONTACT_MESSAGE); return; }
 
   const supabaseAction = createClient();   // ⭐ fresh client for all writes
 
@@ -662,11 +667,14 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
                     <textarea
                       className="textarea-premium"
+                      aria-describedby="description-contact-hint"
+                      aria-invalid={hasDescriptionContactDetails(form.description)}
                       value={form.description}
                       onChange={(e)=>
                         setForm({...form,description:e.target.value})
                       }
                     />
+                    <p id="description-contact-hint" className="mt-2 text-sm text-slate-600">Do not include phone numbers, email addresses, websites or social handles. Use the Contact Seller panel.</p>
                   </div>
 
                   {isSaleListingType(form.listingType) ? (
