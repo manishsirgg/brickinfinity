@@ -487,12 +487,11 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
       if(media.video){
 
-        await supabaseAction
-          .from("property_videos")
-          .insert({
-            property_id: property.id,
-            video_url: media.video
-          });
+        const { error: videoError } = await supabaseAction.rpc("save_property_video", {
+          p_property_id: property.id,
+          p_video_url: media.video
+        });
+        if (videoError) throw new Error(videoError.message);
       }
 
     }catch(mediaErr){
