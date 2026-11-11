@@ -373,6 +373,72 @@ await db.exec('RESET ROLE');assert.equal((await db.query('SELECT count(*)::int A
 assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.resubmitter])).rows[0].seller_status,'active');
 console.log('Rejected resubmission checks passed: existing stuck edits repaired, new content edits requeue retained evidence, no-op/freshness edits stay rejected, immutable decisions retained and fresh approval required.');
 
+// Explicit rejection/correction submission supersedes auto-requeue for new rejections.
+await db.exec('RESET ROLE');
+await db.exec('ALTER TABLE storage.objects ADD COLUMN created_at timestamptz DEFAULT now()');
+await db.exec(`CREATE TABLE public.notifications(id uuid DEFAULT gen_random_uuid(),user_id uuid,title text,message text,type text,category text,link_url text,action_label text,entity_type text,entity_id uuid);`);
+const workflow=fs.readFileSync('supabase/migrations/20261111_review_submission_workflow.sql','utf8');
+await db.exec(workflow);await db.exec(workflow);
+// Send the published fixture for fresh ownership review by changing location.
+await as('resubmitter');await db.query("UPDATE public.properties SET city_id='00000000-0000-0000-0000-000000000108' WHERE id=$1",[resubmittedProperty]);
+await as('other');await assert.rejects(db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5,$6)',[resubmittedProperty,'ownership','Incorrect address','details','Correct the property address.',resubmittedDoc]),/Admin access/);
+await as('admin');
+await assert.rejects(db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5,$6)',[resubmittedProperty,'ownership','Incorrect address','details','',resubmittedDoc]),/required seller action/);
+await assert.rejects(db.query('SELECT public.review_property_ownership($1,false,$2,$3)',[resubmittedDoc,{},'Incomplete old rejection']),/rejection form/);
+const requestId=(await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5,$6) AS id',[resubmittedProperty,'ownership','Incorrect address','details','Correct the description and property address.',resubmittedDoc])).rows[0].id;
+await db.exec('RESET ROLE');assert.equal((await db.query("SELECT count(*)::int AS n FROM public.notifications WHERE entity_id=$1 AND title='Ownership submission rejected'",[resubmittedProperty])).rows[0].n,1);
+await as('other');assert.equal((await db.query('SELECT * FROM public.property_review_requests WHERE id=$1',[requestId])).rows.length,0);
+await assert.rejects(db.query('SELECT public.resubmit_property_review($1)',[resubmittedProperty]),/owner access|Your property/);
+await as('resubmitter');
+await assert.rejects(db.query('UPDATE public.properties SET review_resubmission_required=false WHERE id=$1',[resubmittedProperty]),/review state/);
+await assert.rejects(db.query('SELECT public.resubmit_property_review($1)',[resubmittedProperty]),/Save the requested property corrections/);
+await db.query("UPDATE public.properties SET description='Corrected address and ownership explanation' WHERE id=$1",[resubmittedProperty]);
+let draft=(await db.query('SELECT status,review_resubmission_required,rejection_reason FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0];
+assert.equal(draft.status,'rejected');assert.equal(draft.review_resubmission_required,true);assert.ok(draft.rejection_reason.includes('Incorrect address'));
+await as('admin');await assert.rejects(db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[resubmittedDoc,checks,'Cannot approve unsubmitted corrections.']),/must resubmit/);
+await as('resubmitter');
+await db.query("INSERT INTO public.property_images(property_id,image_url) VALUES($1,'/saved-draft-photo.jpg')",[resubmittedProperty]);
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[resubmittedProperty])).rows[0].queue,'ownership');
+await assert.rejects(db.query('SELECT public.resubmit_property_review($1)',[resubmittedProperty]),/does not need resubmission/);
+await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[resubmittedDoc,checks,'Corrected details match retained ownership evidence.']);
+// Editorial rejection can require new documents, which invalidates ownership on upload.
+await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5)',[resubmittedProperty,'listing','Evidence needs the full address','both','Correct the address and upload new matching proof.']);
+await as('resubmitter');await db.query("UPDATE public.properties SET title='Updated property address' WHERE id=$1",[resubmittedProperty]);
+await assert.rejects(db.query('SELECT public.resubmit_property_review($1)',[resubmittedProperty]),/new ownership evidence/);
+// A newly inserted row pointing to the previously rejected file is not new evidence.
+await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3)",[ids.resubmitter,resubmittedProperty,resubmittedProperty+'/proof.pdf']);
+await assert.rejects(db.query('SELECT public.resubmit_property_review($1)',[resubmittedProperty]),/new ownership evidence/);
+const correctedPath=resubmittedProperty+'/corrected-proof.pdf';
+await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[correctedPath]);
+const newDoc=(await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3) RETURNING id",[ids.resubmitter,resubmittedProperty,correctedPath])).rows[0].id;
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[resubmittedProperty])).rows[0].queue,'ownership');
+await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[newDoc,checks,'New evidence reviewed.']);
+await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5)',[resubmittedProperty,'listing','Clarify room layout','details','Correct the description of the rooms.']);
+await as('resubmitter');await db.query("UPDATE public.properties SET description='Corrected room layout description' WHERE id=$1",[resubmittedProperty]);
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[resubmittedProperty])).rows[0].queue,'listing');
+await as('admin');await db.query('SELECT public.admin_publish_property($1)',[resubmittedProperty]);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].status,'active');
+assert.equal((await db.query('SELECT count(*)::int AS n FROM public.property_review_requests WHERE property_id=$1 AND resubmitted_at IS NOT NULL',[resubmittedProperty])).rows[0].n,3);
+await db.exec(workflow);assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].status,'active');
+// Documents-only correction needs a genuinely new stored file, not detail edits.
+await as('resubmitter');await db.query("UPDATE public.properties SET city_id='00000000-0000-0000-0000-000000000109' WHERE id=$1",[resubmittedProperty]);
+await as('admin');
+// A failed notification rolls back the entire rejection and its history.
+await db.exec('RESET ROLE');await db.exec("ALTER TABLE public.notifications ADD CONSTRAINT fixture_notification_failure CHECK(title<>'Ownership submission rejected') NOT VALID");
+await as('admin');await assert.rejects(db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5,$6)',[resubmittedProperty,'ownership','Replace illegible proof','documents','Upload a clear ownership document.',newDoc]),/fixture_notification_failure/);
+assert.equal((await db.query('SELECT status FROM public.documents WHERE id=$1',[newDoc])).rows[0].status,'pending');
+await db.exec('RESET ROLE');await db.exec('ALTER TABLE public.notifications DROP CONSTRAINT fixture_notification_failure');
+await as('admin');await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5,$6)',[resubmittedProperty,'ownership','Replace illegible proof','documents','Upload a clear ownership document.',newDoc]);
+await as('resubmitter');await assert.rejects(db.query('SELECT public.resubmit_property_review($1)',[resubmittedProperty]),/new ownership evidence/);
+const finalPath=resubmittedProperty+'/clear-proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[finalPath]);
+await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3)",[ids.resubmitter,resubmittedProperty,finalPath]);
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[resubmittedProperty])).rows[0].queue,'ownership');
+await db.exec('RESET ROLE');
+console.log('Explicit review workflow passed: structured rejection and notification, private history, unauthorized access blocked, draft details/media/uploads stay rejected, required changes enforced, ownership/publication routing, fresh approvals and repeatability.');
+
 const diagnosticSql=fs.readFileSync('supabase/diagnostics/ownership-review-reset.sql','utf8').replace('f0aeee08-6dce-44ae-9e3c-f467dc6fb059',ids.reviewedProperty);
 await db.exec('BEGIN READ ONLY');const diagnostic=JSON.parse((await db.query(diagnosticSql)).rows[0].ownership_review_diagnostic);await db.exec('ROLLBACK');
 assert.equal(diagnostic.property.id,ids.reviewedProperty);assert.equal(diagnostic.actual_listing_seller.profile_id,ids.fresh);assert.ok(diagnostic.review_related_triggers.some(t=>t.function==='brick_private.evidence_resubmitted'));assert.ok(diagnostic.installed_review_routines.some(f=>f.function==='public.review_property_ownership'));

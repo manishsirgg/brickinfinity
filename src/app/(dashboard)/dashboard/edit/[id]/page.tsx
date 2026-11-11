@@ -1,4 +1,6 @@
 "use client";
+import PropertyReviewHistory, { type ReviewHistoryItem } from "@/components/property/PropertyReviewHistory";
+import PropertyReviewNotice from "@/components/property/PropertyReviewNotice";
 import OwnerListingFields from "@/components/property/OwnerListingFields";
 import { loadOwnerListingDefaults } from "@/lib/owner-listing-defaults";
 import { applyOwnerDefaults, validateOwnerFields } from "@/lib/owner-verification";
@@ -51,6 +53,8 @@ export default function EditPropertyPage() {
   const message = feedback.text;
   const setMessage = (text: string) => showFeedback(text, text === "Property updated successfully." ? "success" : "error");
 
+  const [reviewHistory, setReviewHistory] = useState<ReviewHistoryItem[]>([]);
+  const [reviewHistoryError, setReviewHistoryError] = useState("");
   const [property,setProperty] = useState<any>(null);
 
   const [states,setStates] = useState<any[]>([]);
@@ -140,7 +144,8 @@ export default function EditPropertyPage() {
           cities(id,state_id,name),
           localities(name),
           property_images(id,image_url,sort_order),
-          property_videos(id,video_url)
+          property_videos(id,video_url),
+          review_request:property_review_requests!properties_review_rejection_id_fkey(id,reason,correction_scope,required_action,stage,resubmitted_at)
         `)
         .eq("id",propertyId)
         .single();
@@ -149,6 +154,12 @@ export default function EditPropertyPage() {
       router.push("/dashboard");
       return;
     }
+
+    const { data: history, error: historyError } = await supabase.from("property_review_requests")
+      .select("id,reason,correction_scope,required_action,stage,created_at,resubmitted_at,submitted_to,imported_legacy")
+      .eq("property_id", propertyId).order("created_at", { ascending: false }).limit(10);
+    setReviewHistory((history || []) as ReviewHistoryItem[]);
+    setReviewHistoryError(historyError ? "Review history could not be loaded. Refresh the page to try again." : "");
 
     const { data: actor } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status,seller_legal_name").eq("user_id",session.user.id).maybeSingle();
     setIsAdmin(actor?.role === "admin");
@@ -347,7 +358,7 @@ export default function EditPropertyPage() {
   }
   /* ================= SAVE ================= */
 
-  async function handleSave(){
+  async function handleSave(submitForReview = false){
 
     if (saving) return;
     const ownerError = validateOwnerFields(property, isAdmin);
@@ -559,11 +570,22 @@ export default function EditPropertyPage() {
         // queues review atomically. Do not issue a second unchecked update.
       }
 
-      setMessage("Property updated successfully.");
-
-      setTimeout(()=>{
-        router.push("/dashboard/my-listings");
-      },1500);
+      setOwnershipDocs([]);
+      if (submitForReview) {
+        const { data: queue, error: submissionError } = await supabase.rpc("resubmit_property_review", { p_property_id: propertyId });
+        if (submissionError || !["ownership", "listing"].includes(queue)) {
+          await fetchProperty();
+          throw new Error(`Your changes were saved, but resubmission failed: ${submissionError?.message || "Review submission was not confirmed."}`);
+        }
+        await fetchProperty();
+        showFeedback(`Resubmitted successfully for ${queue === "ownership" ? "ownership" : "listing publication"} review. Admin approval is still required.`, "success");
+      } else if (property.review_resubmission_required) {
+        await fetchProperty();
+        showFeedback("Corrections saved as a draft. This property has not been resubmitted. Choose Resubmit for review when your corrections are complete.", "success");
+      } else {
+        setMessage("Property updated successfully.");
+        setTimeout(()=>{ router.push("/dashboard/my-listings"); },1500);
+      }
 
     }catch(err:any){
       setMessage(err.message);
@@ -585,6 +607,11 @@ export default function EditPropertyPage() {
       <h1 className="text-3xl font-semibold">Edit Property</h1>
 
       {message && <div ref={feedbackRef} tabIndex={-1} role={feedback.kind === "error" ? "alert" : "status"} className={`rounded-lg border p-4 outline-none ${feedback.kind === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{message}</div>}
+
+      {property.review_request && (property.review_resubmission_required || property.status === "pending") && <PropertyReviewNotice request={property.review_request} required={property.review_resubmission_required} />}
+
+      <PropertyReviewHistory reviews={reviewHistory} />
+      {reviewHistoryError && <p role="alert" className="text-sm text-red-700">{reviewHistoryError}</p>}
 
       <fieldset disabled={saving} className="card-soft min-w-0 p-8 space-y-8 disabled:opacity-75">
 
@@ -886,7 +913,7 @@ export default function EditPropertyPage() {
 
         <section className="space-y-4">
           <h3 className="text-lg font-semibold">Property photos</h3>
-          <p className="text-sm text-slate-600">Choose a cover for your listing cards. Photo order and cover are saved with Save Changes.</p>
+          <p className="text-sm text-slate-600">Choose a cover for your listing cards. Photo order and cover are saved with your changes.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {property.property_images.map((img:any, index:number) => (
               <div key={img.id} className="overflow-hidden rounded-xl border bg-white">
@@ -946,7 +973,7 @@ export default function EditPropertyPage() {
           </div>}
           <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 focus-within:ring-2 focus-within:ring-blue-500">
             <span className="block font-semibold">{property.property_videos.length ? "Replace video" : "＋ Add a video"}</span>
-            <span className="block text-sm text-slate-500">MP4, WebM or MOV · Up to 50 MB · Saved when you click Save Changes</span>
+            <span className="block text-sm text-slate-500">MP4, WebM or MOV · Up to 50 MB · Saved when you save your changes</span>
             <input aria-label="Choose property video" type="file" accept="video/mp4,video/webm,video/quicktime" className="mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-white"
               onChange={e => { const file = e.target.files?.[0]; if (file) handleVideoSelect(file); e.target.value = ""; }} />
           </label>
@@ -958,7 +985,7 @@ export default function EditPropertyPage() {
           <h3 id="ownership-documents-heading" className="text-lg font-semibold">
             Re-Upload Ownership Documents
           </h3>
-          <p className="text-sm text-slate-600">Upload evidence identifying this property and its legal owner. Documents are private and submitted for a new ownership review when you click Save Changes.</p>
+          <p className="text-sm text-slate-600">Upload evidence identifying this property and its legal owner. Documents are private. For rejected listings, save your documents and choose Resubmit for review when your corrections are complete.</p>
           <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 focus-within:ring-2 focus-within:ring-blue-500">
             <span className="block font-semibold">＋ Add ownership documents</span>
             <span id="ownership-documents-help" className="block text-sm text-slate-500">PDF, JPG, PNG or WebP · Up to 10 MB each · Select multiple files</span>
@@ -995,11 +1022,15 @@ export default function EditPropertyPage() {
         </section>
 
         <button
-          onClick={handleSave}
+          onClick={() => handleSave(false)}
           disabled={saving}
           className="btn-primary w-full">
-          {saving ? uploadStatus || "Saving..." : "Save Changes"}
+          {saving ? uploadStatus || "Saving..." : property.review_resubmission_required ? "Save corrections as draft" : "Save Changes"}
         </button>
+        {property.review_resubmission_required && <div className="space-y-2">
+          <button type="button" disabled={saving} onClick={() => handleSave(true)} className="w-full rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white disabled:opacity-50">Resubmit for review</button>
+          <p className="text-sm text-slate-600">Saves your current changes and submits the corrected property to the admin. Required new documents must be selected above or already saved.</p>
+        </div>}
 
       </fieldset>
 

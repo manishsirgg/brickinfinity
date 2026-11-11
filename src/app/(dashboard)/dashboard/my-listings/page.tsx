@@ -1,5 +1,6 @@
 "use client";
 
+import PropertyReviewNotice, { type PropertyReviewRequest } from "@/components/property/PropertyReviewNotice";
 import ListingAvailabilityControl from "@/components/property/ListingAvailabilityControl";
 import PropertyViews from "@/components/property/PropertyViews";
 import VerificationBadges from "@/components/property/VerificationBadges";
@@ -33,6 +34,8 @@ export default function MyListingsPage() {
   status: string;
   verification_status: string | null;
   rejection_reason: string | null;
+  review_resubmission_required: boolean;
+  review_request: PropertyReviewRequest | PropertyReviewRequest[] | null;
   is_featured: boolean | null;
   featured_started_at: string | null;
   featured_until: string | null;
@@ -111,6 +114,8 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
             status,
             verification_status,
             rejection_reason,
+            review_resubmission_required,
+            review_request:property_review_requests!properties_review_rejection_id_fkey(id,reason,correction_scope,required_action,stage,resubmitted_at),
             is_featured,
             featured_started_at,
             featured_until,
@@ -400,7 +405,8 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
                     .toLocaleDateString("en-IN")}
                 </p>
 
-                {property.rejection_reason && (
+                {property.review_request && (property.review_resubmission_required || property.status === "pending") && <PropertyReviewNotice request={property.review_request} required={property.review_resubmission_required} />}
+                {property.rejection_reason && !property.review_request && (
                   <p className="text-xs text-red-600">
                     Reason: {property.rejection_reason}
                   </p>

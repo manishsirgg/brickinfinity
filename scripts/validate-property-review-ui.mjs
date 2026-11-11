@@ -1,0 +1,12 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import ts from 'typescript';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
+const require=createRequire(import.meta.url);
+function load(path){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,require});return exports.default;}
+const Notice=load('src/components/property/PropertyReviewNotice.tsx'),Fields=load('src/components/admin/ReviewCorrectionFields.tsx'),History=load('src/components/property/PropertyReviewHistory.tsx');
+const request={id:'rejection',stage:'ownership',reason:'Address mismatch <script>',correction_scope:'documents',required_action:'Upload proof with the correct address.',created_at:'2026-11-11T10:00:00Z'};
+let html=renderToStaticMarkup(React.createElement(Notice,{request,required:true}));
+assert.ok(html.includes('Ownership rejected'));assert.ok(html.includes('New ownership documents'));assert.ok(html.includes('Upload proof with the correct address.'));assert.ok(html.includes('Saving alone does not send'));assert.ok(!html.includes('<script>'));
+html=renderToStaticMarkup(React.createElement(Notice,{request:{...request,resubmitted_at:'2026-11-11T11:00:00Z'},required:false}));assert.ok(html.includes('Awaiting admin review'));assert.ok(!html.includes('Corrections needed'));
+html=renderToStaticMarkup(React.createElement(Fields,{scope:'both',action:'Correct address and proof.',onScopeChange(){},onActionChange(){}}));assert.ok(html.includes('Both details and new ownership documents'));assert.ok(html.includes('maxLength="2000"'));
+html=renderToStaticMarkup(React.createElement(History,{reviews:[request,{...request,id:'submitted',resubmitted_at:'2026-11-11T11:00:00Z',submitted_to:'ownership'}]}));assert.ok(html.includes('Awaiting seller corrections'));assert.ok(html.includes('Resubmitted to ownership review'));
+const edit=fs.readFileSync('src/app/(dashboard)/dashboard/edit/[id]/page.tsx','utf8');assert.ok(edit.includes('handleSave(false)'));assert.ok(edit.includes('handleSave(true)'));assert.ok(edit.includes('resubmit_property_review'));assert.ok(edit.includes('Corrections saved as a draft'));
+console.log('Review UI checks passed: correction instructions/categories, escaped text, awaiting-review state, retained history and separate save/submit actions.');
