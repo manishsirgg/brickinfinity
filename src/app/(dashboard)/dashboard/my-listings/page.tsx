@@ -1,5 +1,6 @@
 "use client";
 
+import ListingAvailabilityControl from "@/components/property/ListingAvailabilityControl";
 import PropertyViews from "@/components/property/PropertyViews";
 
 import { getCoverImage } from "@/lib/property-images";
@@ -36,6 +37,9 @@ export default function MyListingsPage() {
   featured_rank: number | null;
   featured_last_order_id: string | null;
   deleted_at: string | null;
+  availability_status?: string;
+  available_from?: string | null;
+  availability_confirmed_at?: string | null;
   views_count: number | null;
   created_at: string;
   property_images: { image_url: string; sort_order?: number | null }[] | null;
@@ -111,6 +115,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
             featured_last_order_id,
             deleted_at,
             views_count,
+            availability_status,available_from,availability_confirmed_at,
             created_at,
             property_images(image_url,sort_order)
           `,{count:"exact"})
@@ -382,6 +387,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
                 </span>
 
                 <PropertyViews count={property.views_count} />
+                <ListingAvailabilityControl property={property} />
 
                 <p className="text-xs text-muted">
                   Posted: {new Date(property.created_at)

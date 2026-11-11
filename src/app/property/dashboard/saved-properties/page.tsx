@@ -1,3 +1,4 @@
+import PropertyAvailability from "@/components/property/PropertyAvailability";
 import { createClient } from "@/lib/supabase/server";
 import { getCoverImage } from "@/lib/property-images";
 import { redirect } from "next/navigation";
@@ -27,6 +28,7 @@ export default async function SavedPropertiesPage() {
           property_type,
           price,
           status,
+          availability_status,available_from,availability_confirmed_at,
           ownership_verified,
           deleted_at,
           property_images(image_url,sort_order)
@@ -115,6 +117,7 @@ export default async function SavedPropertiesPage() {
               </div>
 
               <div className="p-4 space-y-1">
+                <PropertyAvailability property={p} />
 
                 <p className="text-sm text-gray-500">
                   {p.property_type}

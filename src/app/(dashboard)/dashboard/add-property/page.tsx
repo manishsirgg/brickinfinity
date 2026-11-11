@@ -1,4 +1,6 @@
 "use client";
+import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
+import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
 
 import TextLimitCounter from "@/components/property/TextLimitCounter";
 import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
@@ -60,6 +62,7 @@ const [selectedState,setSelectedState] = useState("");
   const [amenities,setAmenities] = useState<string[]>([]);
   
 
+  const [rentalDetails, setRentalDetails] = useState<RentalDetails>({ availability_status: "available" });
   const [form,setForm] = useState({
   title:"",
   description:"",
@@ -408,6 +411,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
         : currentUserRole;
 
     const isAdmin = resolvedRole === "admin";
+    const costAndAvailability = rentalDetailsPayload({ ...rentalDetails, maintenance_charges: form.maintenance }, isRentListingType(form.listingType));
     const localityId = await ensureLocality();
     const slug = generateSlug(form.title);
     const seoFields = buildPropertySeoFields(form.title, form.description);
@@ -440,7 +444,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
           furnishing_status: form.furnishing || null,
           built_up_area: form.builtUpArea || null,
           carpet_area: form.carpetArea || null,
-          maintenance_charges: form.maintenance || null,
+          ...costAndAvailability,
           ...seoFields,
           preferred_tenant:
             isRentListing
@@ -652,6 +656,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
             {success && <div className="badge-success mb-4">{success}</div>}
 
             <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
+              {step === 3 && <RentalAvailabilityFields value={{ ...rentalDetails, maintenance_charges: form.maintenance }} onChange={patch => { const { maintenance_charges, ...rest } = patch; setRentalDetails(prev => ({ ...prev, ...rest })); if (maintenance_charges !== undefined) setForm(prev => ({ ...prev, maintenance: String(maintenance_charges ?? "") })); }} isRent={isRentListingType(form.listingType)} />}
 
               {/* STEP 1 */}
 
@@ -1048,7 +1053,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
   </div>
 
   <div className="grid md:grid-cols-2 gap-6">
-    <div>
+    <div className={isRentListingType(form.listingType) ? "hidden" : ""}>
       <label className="label">
         Monthly Maintenance Charges
       </label>

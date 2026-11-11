@@ -17,6 +17,7 @@ function load(path) {
 }
 const viewsModule = load("src/components/property/PropertyViews.tsx");
 modules["@/components/property/PropertyViews"] = viewsModule;
+modules["./PropertyAvailability"] = { default: () => null };
 modules["@/lib/property-images"] = load("src/lib/property-images.ts");
 modules["@/lib/property-featured"] = { isPropertyFeaturedActive: () => false };
 modules["next/link"] = { default: props => React.createElement("a", props) };

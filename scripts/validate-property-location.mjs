@@ -38,7 +38,7 @@ const fixtures = {
     { id: "city-only", city_id: "chh", locality_id: "other-road", listing_type: "Rent" },
     { id: "state-only", city_id: "other-city", listing_type: "Sale" },
     { id: "excluded", city_id: "outside", listing_type: "Rent" },
-  ].map((item, index) => ({ ...item, created_at: `2026-11-${String(index + 1).padStart(2, "0")}`, status: "active", verification_status: "approved", deleted_at: null })),
+  ].map((item, index) => ({ ...item, created_at: `2026-11-${String(index + 1).padStart(2, "0")}`, availability_status: "unknown", status: "active", verification_status: "approved", deleted_at: null })),
 };
 const calls = [];
 client = { from(table) {
@@ -139,3 +139,12 @@ for (const route of ["buy", "rent", "properties/buy", "properties/rent"]) {
   assert.ok(html.includes(`data-property="${route.endsWith("buy") ? "road-0" : "road-1"}"`));
 }
 console.log("Search filters and sorting checks passed: combined filters, repeated amenities, ordering before pagination, invalid ranges and shared Buy/Rent routes.");
+
+fixtures.properties.push({ ...fixtures.properties[0], id: "closed-property", availability_status: "rented" });
+fixtures.properties[0].availability_status = "available";
+fixtures.properties[0].availability_confirmed_at = new Date().toISOString();
+const available = renderToStaticMarkup(await Page({ searchParams: { state_id: "mp", availability: "available", confirmed_recent: "1" } }));
+assert.ok(available.includes("1 verified properties found."));
+assert.ok(available.includes('data-property="road-0"'));
+assert.ok(!available.includes('data-property="closed-property"'));
+console.log("Closed availability exclusion and recent-confirmation filter checks passed.");

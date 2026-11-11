@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
     const { data: property, error: propertyError } = await supabase
       .from("properties")
-      .select("id, seller_id, title, status, deleted_at")
+      .select("id, seller_id, title, status, availability_status, deleted_at")
       .eq("id", property_id)
       .maybeSingle();
 
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (property.status !== "active" || property.deleted_at) {
+    if (property.status !== "active" || property.deleted_at || ["rented", "sold", "unavailable"].includes(property.availability_status)) {
       return NextResponse.json(
         { error: "Property not active" },
         { status: 400 }

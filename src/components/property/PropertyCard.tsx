@@ -2,10 +2,14 @@
 
 import { getCoverImage } from "@/lib/property-images";
 import PropertyViews from "@/components/property/PropertyViews"
+import PropertyAvailability from "./PropertyAvailability"
 import Link from "next/link"
 import { isPropertyFeaturedActive } from "@/lib/property-featured"
 
 type PropertyCardProperty = {
+  availability_status?: string
+  available_from?: string | null
+  availability_confirmed_at?: string | null
   id: string
   slug?: string | null
   property_type?: string | null
@@ -153,6 +157,7 @@ export default function PropertyCard({ property }: Props) {
 
       <div className="p-4 md:p-5 space-y-3">
         <PropertyViews count={property.views_count} />
+        <PropertyAvailability property={property} />
         <div>
           <p className="text-xl font-bold text-primary">
             ₹ {formattedPrice}

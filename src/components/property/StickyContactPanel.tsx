@@ -48,13 +48,13 @@ export default function StickyContactPanel({
 
     const { data } = await supabase
       .from("properties")
-      .select("status, deleted_at")
+      .select("status, availability_status, deleted_at")
       .eq("id", propertyId)
       .maybeSingle();
 
     if (!data) return false;
 
-    return data.status === "active" && !data.deleted_at;
+    return data.status === "active" && !data.deleted_at && !["rented", "sold", "unavailable"].includes(data.availability_status);
   };
 
   /* ================= SEND LEAD ================= */

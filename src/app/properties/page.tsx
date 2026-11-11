@@ -43,6 +43,8 @@ const noResultSuggestions = [
 
 type PropertiesSearchParams = {
   search?: string;
+  availability?: string;
+  confirmed_recent?: string;
   keyword?: string;
   sort?: string;
   min_area?: string;
@@ -230,10 +232,11 @@ export default async function PropertiesSearchPage({
   let query = supabase
     .from("properties")
     .select(
-      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,${location.state ? "cities!inner(name)" : "cities(name)"},localities(name),property_images(image_url,sort_order)`,
+      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,availability_status,available_from,availability_confirmed_at,hourly_rate,daily_rate,monthly_rate,${location.state ? "cities!inner(name)" : "cities(name)"},localities(name),property_images(image_url,sort_order)`,
       { count: "exact" },
     )
     .eq("status", "active")
+.in("availability_status", ["unknown", "available", "available_from"])
     .eq("verification_status", "approved")
     .is("deleted_at", null);
 
@@ -249,6 +252,11 @@ export default async function PropertiesSearchPage({
   if (maxArea !== undefined) query = query.lte("built_up_area", maxArea);
   if (furnishing) query = query.eq("furnishing_status", furnishing);
   if (amenities.length) query = query.contains("amenities", amenities);
+  if (resolvedSearchParams.availability) {
+    if (["available", "available_from"].includes(resolvedSearchParams.availability)) query = query.eq("availability_status", resolvedSearchParams.availability);
+    else filterError = "Choose a valid availability filter.";
+  }
+  if (resolvedSearchParams.confirmed_recent === "1") query = query.gte("availability_confirmed_at", new Date(Date.now() - 30 * 86400000).toISOString());
   if (filterError) query = query.in("id", []);
   if (location.notFound) query = query.in("id", []);
   if (location.state) query = query.eq("cities.state_id", location.state.id);
@@ -298,6 +306,8 @@ export default async function PropertiesSearchPage({
       ? `${propertyTypeDisplayName} Properties`
       : locationLabel ? `Properties in ${locationLabel}` : listingType === "Sale" ? "Properties for sale" : listingType === "Rent" ? "Properties for rent" : "Property Results";
   const activeSearchChips = [
+    resolvedSearchParams.availability ? { label: "Availability", value: resolvedSearchParams.availability === "available" ? "Available now" : "Available from a date" } : null,
+    resolvedSearchParams.confirmed_recent === "1" ? { label: "Freshness", value: "Confirmed in last 30 days" } : null,
     minPrice !== undefined || maxPrice !== undefined ? { label: "Price", value: `₹${minPrice ?? 0} – ${maxPrice !== undefined ? `₹${maxPrice}` : "Any"}` } : null,
     minArea !== undefined || maxArea !== undefined ? { label: "Built-up area", value: `${minArea ?? 0} – ${maxArea ?? "Any"} sq ft` } : null,
     bedroomCount ? { label: "Bedrooms", value: String(bedroomCount) } : null,

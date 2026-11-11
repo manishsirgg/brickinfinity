@@ -19,7 +19,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const { data } = await supabase
       .from("properties")
       .select("slug, updated_at")
-      .eq("status", "active");
+      .eq("status", "active")
+      .in("availability_status", ["unknown", "available", "available_from"]);
     properties = data;
   }
 
