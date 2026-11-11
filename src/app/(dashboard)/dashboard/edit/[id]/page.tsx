@@ -7,7 +7,7 @@ import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFi
 import { rentalDetailsPayload } from "@/lib/property-rental-details";
 
 import TextLimitCounter from "@/components/property/TextLimitCounter";
-import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
+import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords, PROPERTY_DESCRIPTION_WORD_LIMIT } from "@/lib/property-text-limits";
 
 import { hasPropertyContactDetails, DESCRIPTION_CONTACT_MESSAGE, TITLE_CONTACT_MESSAGE } from "@/lib/property-description-policy";
 
@@ -610,7 +610,7 @@ export default function EditPropertyPage() {
 
           <textarea className="textarea-premium"
             aria-describedby="description-contact-hint description-limit"
-            aria-invalid={hasPropertyContactDetails(property.description) || countDescriptionWords(property.description) > 3000}
+            aria-invalid={hasPropertyContactDetails(property.description) || countDescriptionWords(property.description) > PROPERTY_DESCRIPTION_WORD_LIMIT}
             value={property.description}
             onChange={(e)=>
               setProperty({...property,description:e.target.value})
