@@ -1,4 +1,6 @@
 "use client";
+import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
+import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
 
 import TextLimitCounter from "@/components/property/TextLimitCounter";
 import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
@@ -351,6 +353,7 @@ export default function EditPropertyPage() {
 
       if(!session) throw new Error("Session expired");
 
+      const costAndAvailability = rentalDetailsPayload(property, isRentListingType(property.listing_type));
       const profileId =
         await getProfileId(session.user.id);
       const localityId = await ensureLocality();
@@ -408,7 +411,7 @@ export default function EditPropertyPage() {
           furnishing_status:property.furnishing_status || null,
           built_up_area:property.built_up_area || null,
           carpet_area:property.carpet_area || null,
-          maintenance_charges:property.maintenance_charges || null,
+          ...costAndAvailability,
           gated_security:property.gated_security,
           ...seoFields,
           amenities,
@@ -761,8 +764,8 @@ export default function EditPropertyPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <input type="number" className="input-premium" placeholder="Maintenance Charges"
-              value={property.maintenance_charges || ""}
+            <input type="number" className={`input-premium ${isRentListingType(property.listing_type) ? "hidden" : ""}`} placeholder="Maintenance Charges"
+              value={property.maintenance_charges ?? ""}
               onChange={(e)=> setProperty({...property, maintenance_charges:e.target.value})}
             />
 
@@ -833,6 +836,8 @@ export default function EditPropertyPage() {
           </label>
 
         </section>
+
+        <RentalAvailabilityFields value={property} onChange={patch => setProperty((prev: typeof property) => ({ ...prev, ...patch }))} isRent={isRentListingType(property.listing_type)} />
 
         {/* AMENITIES */}
 

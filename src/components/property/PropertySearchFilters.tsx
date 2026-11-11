@@ -63,6 +63,8 @@ export default function PropertySearchFilters({ values, states, cities: initialC
       <label className="space-y-1 text-sm font-medium">City<select aria-label="City" className={fieldClass} name="city_id" value={city} disabled={loading || !state} onChange={e => changeLocation("city", e.target.value)}><option value="">All cities</option>{cities.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}</select></label>
       <label className="space-y-1 text-sm font-medium">Locality<select aria-label="Locality" className={fieldClass} name="locality_id" value={locality} disabled={loading || !city} onChange={e => setLocality(e.target.value)}><option value="">All localities</option>{localities.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}</select></label>
       {select("Property type", "property_type", PROPERTY_TYPES)}
+      <label className="space-y-1 text-sm font-medium">Availability<select aria-label="Availability" name="availability" defaultValue={values.availability || ""} className={fieldClass}><option value="">All current listings</option><option value="available">Available now</option><option value="available_from">Available from a date</option></select></label>
+      <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="confirmed_recent" value="1" defaultChecked={values.confirmed_recent === "1"} />Confirmed in the last 30 days</label>
       {numeric("Minimum price (₹)", "min_price", "No minimum")}
       {numeric("Maximum price (₹)", "max_price", "No maximum")}
     </div>

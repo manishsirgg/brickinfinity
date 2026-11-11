@@ -1,3 +1,6 @@
+import RentalCostBreakdown from "@/components/property/RentalCostBreakdown";
+import PropertyAvailability from "@/components/property/PropertyAvailability";
+import { PUBLIC_AVAILABILITY } from "@/lib/property-rental-details";
 import PropertyViews from "@/components/property/PropertyViews";
 import LocationBreadcrumb from "@/components/property/LocationBreadcrumb";
 import PropertyDescription from "@/components/property/PropertyDescription";
@@ -220,6 +223,7 @@ property_images(image_url,sort_order)
 .eq("city_id",property.city_id)
 .eq("listing_type",property.listing_type)
 .eq("status", "active")
+.in("availability_status", ["unknown", "available", "available_from"])
 .eq("verification_status", "approved")
 .is("deleted_at", null)
 .neq("id",property.id)
@@ -267,10 +271,10 @@ This property is not yet live. Only you can see this preview.
 
 <div className="card-soft p-4 mb-8 flex flex-wrap items-center justify-between gap-3">
 <div className="text-sm">
-🔥 This property is getting attention. Contact the seller before it's gone.
+{PUBLIC_AVAILABILITY.includes(property.availability_status || "unknown") ? "🔥 This property is getting attention. Contact the seller before it's gone." : "This property is no longer available."}
 </div>
 <a href="#contact" className="btn-primary shrink-0 text-sm">
-Contact Seller
+{PUBLIC_AVAILABILITY.includes(property.availability_status || "unknown") ? "Contact Seller" : "Listing status"}
 </a>
 </div>
 
@@ -290,6 +294,7 @@ Contact Seller
 </p>
 
 <PropertyViews count={property.views_count} />
+<PropertyAvailability property={property} />
 
 <div className="flex flex-wrap items-center gap-3 sm:gap-6">
 
@@ -354,6 +359,8 @@ title={property.title}
 </section>
 
 
+
+{property.listing_type === "Rent" && <RentalCostBreakdown property={property} />}
 
 <section className="card-soft min-w-0 p-4 sm:p-6">
 <h2 className="text-xl font-semibold mb-6">Property Details</h2>
@@ -489,11 +496,11 @@ Seller
 
 </div>
 
-<StickyContactPanel
+{PUBLIC_AVAILABILITY.includes(property.availability_status || "unknown") ? <StickyContactPanel
 propertyId={property.id}
 sellerId={property.seller_id}
 sellerName={sellerData.full_name}
-/>
+/> : <p role="status" className="rounded-xl border p-4">This property is no longer available for enquiries.</p>}
 
 </div>
 

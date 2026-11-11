@@ -35,11 +35,11 @@ export async function POST(req: Request) {
 
     const { data: property } = await supabase
       .from("properties")
-      .select("seller_id, status, deleted_at")
+      .select("seller_id, status, availability_status, deleted_at")
       .eq("id", property_id)
       .maybeSingle();
 
-    if (!property || property.status !== "active" || property.deleted_at) {
+    if (!property || property.status !== "active" || property.deleted_at || ["rented", "sold", "unavailable"].includes(property.availability_status)) {
       return NextResponse.json(
         { error: "Property not available" },
         { status: 400 }

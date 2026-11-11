@@ -25,6 +25,7 @@ export default async function HomePage() {
       amenities,
       created_at,
       views_count,
+      availability_status, available_from, availability_confirmed_at, hourly_rate, daily_rate, monthly_rate,
       is_featured,
       featured_until,
       featured_rank,
@@ -39,6 +40,7 @@ export default async function HomePage() {
       .from("properties")
       .select(baseSelect)
       .eq("status", "active")
+.in("availability_status", ["unknown", "available", "available_from"])
       .eq("verification_status", "approved")
       .is("deleted_at", null)
       .order(orderBy, { ascending: false })
@@ -64,6 +66,7 @@ export default async function HomePage() {
         amenities,
         created_at,
         views_count,
+      availability_status, available_from, availability_confirmed_at, hourly_rate, daily_rate, monthly_rate,
         is_featured,
         featured_until,
         featured_rank,
@@ -71,6 +74,7 @@ export default async function HomePage() {
         ownership_verified
       `)
       .eq("status", "active")
+.in("availability_status", ["unknown", "available", "available_from"])
       .eq("verification_status", "approved")
       .is("deleted_at", null)
       .order(orderBy, { ascending: false })
