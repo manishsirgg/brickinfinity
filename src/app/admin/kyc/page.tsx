@@ -1,308 +1,117 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import IdentityDocumentPreview from "@/components/admin/IdentityDocumentPreview";
+import { groupIdentityApplications, IDENTITY_TYPES, identityLabel, latestIdentityDocuments, type IdentityApplication, type IdentityDocument } from "@/lib/identity-review";
 
-const supabase = createClient()
+const supabase = createClient();
+const documentSelection = `id,user_id,document_type,document_url,status,created_at,rejection_reason,users(id,full_name,email,phone,owner_declaration_at,seller_identity,kyc_status,seller_status)`;
 
 export default function AdminKYCPage() {
-
-  const [queue, setQueue] = useState<any[]>([])
-  const [selected, setSelected] = useState<any>(null)
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-
-  const [loadingDoc, setLoadingDoc] = useState(false)
-  const [loadingQueue, setLoadingQueue] = useState(true)
-  const [processing, setProcessing] = useState(false)
-  const [rejectReason, setRejectReason] = useState("")
-
-  /* ================= FETCH QUEUE ================= */
+  const [queue, setQueue] = useState<IdentityApplication[]>([]);
+  const [selected, setSelected] = useState<IdentityApplication | null>(null);
+  const [documents, setDocuments] = useState<IdentityDocument[]>([]);
+  const [loadingQueue, setLoadingQueue] = useState(true);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const selectionVersion = useRef(0);
 
   async function fetchQueue() {
-
-    setLoadingQueue(true)
-
-    const { data, error } = await supabase
-      .from("documents")
-      .select(`
-        id,
-        user_id,
-        document_type,
-        document_url,
-        status,
-        created_at,
-        users (
-          id,
-          full_name,
-          email,
-          phone,
-          created_at,
-          seller_status,
-          reputation_score
-        )
-      `)
-      .is("property_id", null)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(50)
-
-    if (error) {
-      console.error("Queue fetch error:", error)
-      setLoadingQueue(false)
-      return
-    }
-
-    setQueue(data || [])
-    setLoadingQueue(false)
-  }
-
-  useEffect(() => {
-    fetchQueue()
-  }, [])
-
-  /* ================= LOAD DOCUMENT ================= */
-
-  async function loadDocument(path: string) {
-
-    if (!path) return
-
-    setLoadingDoc(true)
-    setImageUrl(null)
-
-    const { data, error } = await supabase
-      .storage
-      .from("identity-documents")
-      .createSignedUrl(path, 3600)
-
-    if (error) {
-      console.error("Signed URL error:", error)
-      setLoadingDoc(false)
-      return
-    }
-
-    setImageUrl(data.signedUrl)
-    setLoadingDoc(false)
-  }
-
-  useEffect(() => {
-
-    if (!selected) {
-      setImageUrl(null)
-      return
-    }
-
-    loadDocument(selected.document_url)
-
-  }, [selected])
-
-  function getRequestedRole(_sellerStatus?: string): string { return "seller"; }
-
-  /* ================= APPROVE ================= */
-
-  async function reviewIdentity(doc: any, approve: boolean) {
-    if (processing) return;
-    const note = approve ? prompt("Record the identity / selfie matching review note") : rejectReason.trim();
-    if (!note?.trim()) { alert("A review note or rejection reason is required."); return; }
-    setProcessing(true);
+    setLoadingQueue(true);
     try {
-      const { error } = await supabase.rpc("review_identity_document", { p_document_id: doc.id, p_approve: approve, p_note: note.trim() });
+      // Page by users, not documents, so each applicant has one queue entry.
+      const { data, error } = await supabase.from("users").select(`id,full_name,email,phone,owner_declaration_at,seller_identity,kyc_status,seller_status,documents!inner(id,user_id,document_type,document_url,status,created_at,rejection_reason)`)
+        .is("documents.property_id", null).in("documents.document_type", [...IDENTITY_TYPES]).eq("documents.status", "pending").order("id").limit(50);
       if (error) throw new Error(error.message);
-      setSelected(null); setImageUrl(null); setRejectReason(""); await fetchQueue();
-    } catch (error) { alert(error instanceof Error ? error.message : "Identity review failed"); }
+      const rows = (data || []).flatMap(user => user.documents.map(doc => ({ ...doc, users: { id: user.id, full_name: user.full_name, email: user.email, phone: user.phone, owner_declaration_at: user.owner_declaration_at, seller_identity: user.seller_identity, kyc_status: user.kyc_status, seller_status: user.seller_status } })));
+      setQueue(groupIdentityApplications(rows));
+    } catch (error) { setError(error instanceof Error ? error.message : "KYC queue could not be loaded."); }
+    finally { setLoadingQueue(false); }
+  }
+
+  useEffect(() => { void fetchQueue(); }, []);
+
+  async function loadApplication(application: IdentityApplication, resetNote = true) {
+    const version = ++selectionVersion.current;
+    setSelected(application); setLoadingDocuments(true); setDocuments([]);
+    if (resetNote) { setReviewNote(""); setMessage(""); setError(""); }
+    try {
+      const { data, error } = await supabase.from("documents").select(documentSelection).eq("user_id", application.user_id)
+        .is("property_id", null).in("document_type", [...IDENTITY_TYPES]).order("created_at", { ascending: false }).order("id", { ascending: false });
+      if (error) throw new Error(error.message);
+      if (version !== selectionVersion.current) return;
+      const latest = latestIdentityDocuments((data || []) as unknown as IdentityDocument[]);
+      setDocuments(latest);
+      if (latest[0]?.users) setSelected({ ...application, profile: latest[0].users });
+    } catch (error) { if (version === selectionVersion.current) setError(error instanceof Error ? error.message : "Identity documents could not be loaded."); }
+    finally { if (version === selectionVersion.current) setLoadingDocuments(false); }
+  }
+
+  async function reviewDocument(document: IdentityDocument, approve: boolean) {
+    if (processing || !selected) return;
+    const note = reviewNote.trim();
+    if (!note) { setError("Enter the review note or rejection reason in the box below."); return; }
+    setProcessing(true); setError(""); setMessage("");
+    try {
+      const { error } = await supabase.rpc("review_identity_document", { p_document_id: document.id, p_approve: approve, p_note: note });
+      if (error) throw new Error(error.message);
+      setMessage(`${identityLabel(document.document_type)} ${approve ? "approved" : "rejected"}. Review any remaining pending documents for this user. Your note has been kept.`);
+      await loadApplication(selected, false);
+      await fetchQueue();
+    } catch (error) { setError(error instanceof Error ? error.message : "Identity review failed. Your note has been kept."); }
     finally { setProcessing(false); }
   }
-  const approve = (doc: any) => reviewIdentity(doc,true);
-  const reject = (doc: any) => reviewIdentity(doc,false);
 
-  /* ================= UI ================= */
-
-  return (
-
-    <div className="max-w-6xl mx-auto p-10">
-
-      <h1 className="text-2xl font-semibold mb-8">
-        KYC Verification
-      </h1>
-
-      <div className="grid grid-cols-3 gap-6">
-
-        {/* QUEUE */}
-
-        <div className="border rounded-xl p-4">
-
-          <h2 className="font-semibold mb-4">
-            Pending KYC
-          </h2>
-
-          {loadingQueue && (
-            <p className="text-sm text-gray-500">
-              Loading queue...
-            </p>
-          )}
-
-          {!loadingQueue && queue.length === 0 && (
-            <p className="text-sm text-gray-500">
-              No pending KYC documents
-            </p>
-          )}
-
-          <div className="space-y-2">
-
-            {queue.map(item => (
-
-              <div
-                key={item.id}
-                onClick={() => setSelected(item)}
-                className={`border rounded-md p-3 cursor-pointer hover:bg-gray-100 ${
-                  selected?.id === item.id ? "bg-gray-100" : ""
-                }`}
-              >
-
-                <div className="font-medium">
-                  {item.users?.full_name || "Unknown User"}
-                </div>
-
-                <div className="text-xs text-gray-500">
-                  {item.users?.email}
-                </div>
-
-                <div className="text-xs text-gray-400">
-                  Phone: {item.users?.phone || "N/A"}
-                </div>
-
-                <div className="text-xs text-gray-400 capitalize">
-                  {item.document_type.replace("_", " ")}
-                </div>
-
-                <div className="mt-2">
-                  <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                    getRequestedRole(item.users?.seller_status) === "admin"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-blue-100 text-blue-700"
-                  }`}>
-                    {getRequestedRole(item.users?.seller_status) === "admin"
-                      ? "Applying for Admin"
-                      : "Applying for Seller"}
-                  </span>
-                </div>
-
-              </div>
-
-            ))}
-
-          </div>
-
-        </div>
-
-        {/* DOCUMENT VIEW */}
-
-        <div className="col-span-2 border rounded-xl p-4">
-
-          {!selected && (
-            <p className="text-gray-500">
-              Select a document to review
-            </p>
-          )}
-
-          {selected && (
-
-            <div>
-
-              <div className="mb-4">
-
-                <div className="font-medium">
-                  {selected.users?.full_name}
-                </div>
-
-                <div className="text-sm text-gray-500">
-                  {selected.users?.email}
-                </div>
-
-                <div className="text-sm text-gray-500">
-                  Phone: {selected.users?.phone || "N/A"}
-                </div>
-
-                <div className="text-xs text-gray-400">
-                  Joined: {new Date(selected.users?.created_at).toLocaleDateString()}
-                </div>
-
-                <div className="mt-3">
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-                    getRequestedRole(selected.users?.seller_status) === "admin"
-                      ? "bg-red-100 text-red-700 ring-2 ring-red-300"
-                      : "bg-blue-100 text-blue-700 ring-2 ring-blue-200"
-                  }`}>
-                    Requested role: {getRequestedRole(selected.users?.seller_status)}
-                  </span>
-                </div>
-
-                <div className="text-xs text-gray-400 capitalize">
-                  Document: {selected.document_type.replace("_", " ")}
-                </div>
-
-              </div>
-
-              {loadingDoc && (
-                <p className="text-gray-500 text-sm">
-                  Loading document preview...
-                </p>
-              )}
-
-              {imageUrl && (
-                <img
-                  src={imageUrl}
-                  className="max-h-96 border rounded mb-4"
-                />
-              )}
-
-              {!loadingDoc && !imageUrl && (
-                <p className="text-red-500 text-sm mb-4">
-                  Could not load document preview
-                </p>
-              )}
-
-              <div className="mt-4 mb-4">
-                <label className="block text-sm font-medium mb-1">
-                  Rejection reason (required if rejecting)
-                </label>
-                <textarea
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  rows={3}
-                  placeholder="Explain why this document/application is being rejected."
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="flex gap-4">
-
-                <button
-                  disabled={processing}
-                  onClick={() => approve(selected)}
-                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
-                >
-                  Approve
-                </button>
-
-                <button
-                  disabled={processing}
-                  onClick={() => reject(selected)}
-                  className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-50"
-                >
-                  Reject
-                </button>
-
-              </div>
-
-            </div>
-
-          )}
-
-        </div>
-
-      </div>
-
+  const hasId = documents.some(doc => doc.document_type !== "selfie");
+  const hasSelfie = documents.some(doc => doc.document_type === "selfie");
+  return <main className="mx-auto max-w-7xl p-4 sm:p-8">
+    <h1 className="mb-3 text-2xl font-semibold">KYC Verification</h1>
+    <p className="mb-6 text-sm text-slate-600">One application per user. Compare their government ID and selfie together. Seller access requires both identity documents to be approved and the owner-only declaration to be saved.</p>
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside className="min-w-0 rounded-xl border p-4">
+        <h2 className="mb-4 font-semibold">Pending KYC applications</h2>
+        {loadingQueue && <p>Loading applications…</p>}
+        {!loadingQueue && !queue.length && <p className="text-sm text-slate-600">No pending KYC applications</p>}
+        <div className="space-y-2">{queue.map(application => <button type="button" key={application.user_id} disabled={processing} onClick={() => void loadApplication(application, selected?.user_id !== application.user_id)} className={`w-full rounded-lg border p-3 text-left disabled:opacity-50 ${selected?.user_id === application.user_id ? "bg-slate-100" : "hover:bg-slate-50"}`}>
+          <span className="block font-medium">{application.profile?.full_name || "Unknown user"}</span>
+          <span className="block break-all text-xs text-slate-600">{application.profile?.email}</span>
+          <span className="block text-xs">{application.documents.filter(doc => doc.status === "pending").length} pending document(s) · One user application</span>
+        </button>)}</div>
+        <button type="button" disabled={processing} onClick={() => void fetchQueue()} className="mt-4 text-sm underline">Refresh applications</button>
+      </aside>
+      <section className="min-w-0 space-y-4 rounded-xl border p-4">
+        {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        {processing && <p role="status" className="text-sm text-slate-600">Saving document decision…</p>}
+        {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
+        {!selected ? <p>Select a user application to review</p> : <>
+          <h2 className="text-lg font-semibold">{selected.profile?.full_name || "User"} — Identity review</h2>
+          <p className="break-all text-sm">{selected.profile?.email} · {selected.profile?.phone || "Phone not provided"}</p>
+          <p className="text-sm">Owner-only declaration: <strong>{selected.profile?.owner_declaration_at ? "Recorded" : "Not saved — required before seller activation"}</strong></p>
+          <p className="text-sm">Identity status: {selected.profile?.kyc_status || "Not submitted"} · Seller status: {selected.profile?.seller_status || "Not active"}</p>
+          {loadingDocuments ? <p>Loading this user’s identity evidence…</p> : <>
+            {(!hasId || !hasSelfie) && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{!hasId && "Government ID is missing. "}{!hasSelfie && "Selfie is missing. "}Approving one document alone does not complete identity verification.</p>}
+            <label className="block text-sm font-medium">Review note / rejection reason (required for either decision)
+              <textarea value={reviewNote} disabled={processing} onChange={event => setReviewNote(event.target.value)} rows={3} placeholder="Record your identity comparison findings or explain the rejection." className="mt-2 w-full rounded-lg border px-3 py-2 font-normal" />
+            </label>
+            <p className="text-xs text-slate-600">This note is sent with the document decision. No additional popup note is required. It stays here while you review this user’s other documents.</p>
+            <div className="grid min-w-0 gap-4 xl:grid-cols-2">{documents.map(document => <article key={document.id} className="min-w-0 space-y-3 rounded-lg border p-3">
+              <h3 className="font-semibold">{identityLabel(document.document_type)}</h3>
+              <p className="text-sm">Document status: {document.status}</p>
+              {document.rejection_reason && <p className="text-sm text-red-700">Rejection reason: {document.rejection_reason}</p>}
+              <IdentityDocumentPreview document={document} />
+              {document.status === "pending" && <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={processing || !reviewNote.trim()} onClick={() => void reviewDocument(document, true)} className="rounded bg-green-700 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">Approve {identityLabel(document.document_type)}</button>
+                <button type="button" disabled={processing || !reviewNote.trim()} onClick={() => void reviewDocument(document, false)} className="rounded bg-red-700 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">Reject {identityLabel(document.document_type)}</button>
+              </div>}
+            </article>)}</div>
+            {!documents.length && <p>No current identity documents found. Refresh the application queue.</p>}
+          </>}
+        </>}
+      </section>
     </div>
-
-  )
+  </main>;
 }

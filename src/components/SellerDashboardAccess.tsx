@@ -15,6 +15,16 @@ export default function SellerDashboardAccess({ profile, documents, rejectionRea
   const selfie = documents.selfie;
   return <section id="seller-access" className="scroll-mt-28 space-y-3 rounded-xl border-2 border-dashed p-6">
     <h2 className="text-lg font-semibold">Seller dashboard access</h2>
+    {profile.role !== "admin" && <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+      <h3 className="font-semibold">To become a seller, all three are mandatory</h3>
+      <p>Completing only one or two is not enough. Upload the documents and save your declaration here, then wait for admin identity approval and seller activation.</p>
+      <ol className="list-decimal space-y-2 pl-5">
+        <li><strong>One government ID:</strong> Aadhaar, Passport or Driving License. <span>{approvedId ? "Approved" : hasId ? "Uploaded — approval required" : "Not uploaded"}</span></li>
+        <li><strong>A matching selfie:</strong> Used to confirm that the ID belongs to you. <span>{selfie?.status === "approved" && selfie.document_url ? "Approved" : selfie?.document_url ? "Uploaded — approval required" : "Not uploaded"}</span></li>
+        <li><strong>The owner-only declaration:</strong> Confirm you are an actual owner or project-owning builder, not an agent or broker. <span>{profile.ownerDeclared ? "Recorded" : "Not saved"}</span></li>
+      </ol>
+      <p>Identity approval does not verify ownership of every property. Each listing requires its own ownership review.</p>
+    </div>}
     {access.allowed ? <><p className="text-sm text-emerald-800">{profile.role === "admin" ? "Staff admin access is active." : "Your owner declaration, identity approval and seller activation are complete."}</p><Link prefetch={false} className="btn-primary inline-flex" href="/dashboard">Open seller dashboard</Link></> : <>
       <p className="text-sm text-amber-900">Your dashboard is waiting for the steps below. Saving an owner declaration does not by itself activate seller access.</p>
       <ul className="list-disc space-y-2 pl-5 text-sm">
