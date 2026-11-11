@@ -1,7 +1,8 @@
 "use client";
 import { useFormFeedback } from "@/lib/use-form-feedback";
 import OwnerListingFields from "@/components/property/OwnerListingFields";
-import { validateOwnerFields, type OwnerFields } from "@/lib/owner-verification";
+import { loadOwnerListingDefaults } from "@/lib/owner-listing-defaults";
+import { applyOwnerDefaults, validateOwnerFields, type OwnerFields } from "@/lib/owner-verification";
 import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
 import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
 
@@ -117,11 +118,15 @@ async function loadCurrentUserRole() {
 
   const { data } = await supabase
     .from("users")
-    .select("role,seller_identity")
+    .select("id,role,seller_identity,full_name,kyc_status")
     .eq("user_id", authId)
     .maybeSingle();
 
   setDeclaredOwnerKind(data?.seller_identity || null);
+  if (data && data.role !== "admin") {
+    const defaults = await loadOwnerListingDefaults(data);
+    setOwnerFields(previous => applyOwnerDefaults(previous, defaults));
+  }
   if (data?.role === "admin" || data?.role === "seller" || data?.role === "buyer") {
     setCurrentUserRole(data.role);
   }
@@ -410,7 +415,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
     const profileId = await getProfileId(session.user.id);
     const { data: userRoleRecord } = await supabaseAction
       .from("users")
-      .select("role,seller_identity")
+      .select("id,role,seller_identity,full_name,kyc_status")
       .eq("user_id", session.user.id)
       .maybeSingle();
 
@@ -422,6 +427,12 @@ const handleSubmit = async (e:React.FormEvent)=>{
         : currentUserRole;
 
     const isAdmin = resolvedRole === "admin";
+    if (!isAdmin && userRoleRecord && ownerFields.owner_kind !== userRoleRecord.seller_identity) {
+      const defaults = await loadOwnerListingDefaults(userRoleRecord);
+      setDeclaredOwnerKind(userRoleRecord.seller_identity || null);
+      setOwnerFields(previous => applyOwnerDefaults(previous, defaults));
+      throw new Error("Your Profile declaration changed. We updated the owner category; review the legal owner/project details and confirm this property again before saving.");
+    }
     const ownerError = validateOwnerFields(ownerFields, isAdmin, userRoleRecord?.seller_identity || null);
     if (ownerError) throw new Error(ownerError);
     const costAndAvailability = rentalDetailsPayload({ ...rentalDetails, maintenance_charges: form.maintenance }, isRentListingType(form.listingType));
