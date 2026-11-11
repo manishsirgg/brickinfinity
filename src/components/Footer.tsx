@@ -130,7 +130,7 @@ export default function Footer() {
               <li>
                 Instagram:{" "}
                 <a
-                  href="https://instagarm.com/brick_infinity"
+                  href="https://www.instagram.com/brick_infinity/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-white transition-colors duration-200"

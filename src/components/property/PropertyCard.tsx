@@ -1,6 +1,7 @@
 "use client"
 
 import { getCoverImage } from "@/lib/property-images";
+import PropertyViews from "@/components/property/PropertyViews"
 import Link from "next/link"
 import { isPropertyFeaturedActive } from "@/lib/property-featured"
 
@@ -90,7 +91,7 @@ export default function PropertyCard({ property }: Props) {
     property?.created_at &&
     new Date(property.created_at) > new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
 
-  const isPopular = property?.views_count && property.views_count > 50
+  const isPopular = Number(property?.views_count || 0) > 50
 
   const topAmenities = Array.isArray(property?.amenities)
     ? property.amenities.slice(0, 3)
@@ -151,6 +152,7 @@ export default function PropertyCard({ property }: Props) {
       </div>
 
       <div className="p-4 md:p-5 space-y-3">
+        <PropertyViews count={property.views_count} />
         <div>
           <p className="text-xl font-bold text-primary">
             ₹ {formattedPrice}
