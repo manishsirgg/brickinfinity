@@ -336,6 +336,43 @@ if(process.argv.includes('--text-schema')){
  console.log('Legacy reset reproduced and fixed: audited activation/doc restoration, exact trigger retirement, pending resubmission preserved, publication separate, repeatable migration and future registration.');
 }else{await db.exec('RESET ROLE');await db.exec(retirement);await db.exec(retirement);}
 
+// Content edits after ownership rejection must become a real ownership resubmission.
+await db.exec('RESET ROLE');
+ids.resubmitter='00000000-0000-0000-0000-000000000105';
+const resubmittedProperty='00000000-0000-0000-0000-000000000106',resubmittedDoc='00000000-0000-0000-0000-000000000107';
+await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status,seller_identity,owner_declaration_at) VALUES($1,$1,'seller','approved','active','owner',now())",[ids.resubmitter]);
+for(const type of ['aadhar','selfie']){const path=ids.resubmitter+'/'+type;await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[ids.resubmitter,type,path]);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);}
+await as('resubmitter');await db.query(insert,[resubmittedProperty,ids.resubmitter]);
+await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[resubmittedProperty+'/proof.pdf']);
+await db.query("INSERT INTO public.documents(id,user_id,property_id,document_type,document_url) VALUES($1,$2,$3,'ownership',$4)",[resubmittedDoc,ids.resubmitter,resubmittedProperty,resubmittedProperty+'/proof.pdf']);
+await as('admin');await db.query('SELECT public.review_property_ownership($1,false,$2,$3)',[resubmittedDoc,{},'Correct property details.']);
+// Reproduce already-stuck pending + rejected evidence before applying the forward fix.
+await as('resubmitter');await db.query("UPDATE public.properties SET title='Corrected property details' WHERE id=$1",[resubmittedProperty]);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT ownership_review_status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].ownership_review_status,'rejected');
+const resubmissionMigration=fs.readFileSync('supabase/migrations/20261111_resubmitted_property_reviews.sql','utf8');
+await db.exec('BEGIN');
+await db.query("UPDATE public.properties SET ownership_review_status='unreviewed' WHERE id=$1",[resubmittedProperty]);
+await db.exec(resubmissionMigration.replace('BEGIN;','').replace('COMMIT;',''));
+assert.equal((await db.query('SELECT status FROM public.documents WHERE id=$1',[resubmittedDoc])).rows[0].status,'pending');
+await db.exec('ROLLBACK');
+await db.exec(resubmissionMigration);
+async function assertResubmitted(){
+ const row=(await db.query('SELECT p.status,p.ownership_review_status,p.ownership_verified,p.rejection_reason,d.status AS document_status,d.reviewed_at FROM public.properties p JOIN public.documents d ON d.property_id=p.id WHERE d.id=$1',[resubmittedDoc])).rows[0];
+ assert.equal(row.status,'pending');assert.equal(row.ownership_review_status,'unreviewed');assert.equal(row.ownership_verified,false);assert.equal(row.document_status,'pending');assert.equal(row.reviewed_at,null);assert.equal(row.rejection_reason,null);
+}
+await assertResubmitted();await db.exec(resubmissionMigration);await assertResubmitted();
+await as('admin');await assert.rejects(db.query('SELECT public.admin_publish_property($1)',[resubmittedProperty]),/reviewed ownership/);
+await db.query('SELECT public.review_property_ownership($1,false,$2,$3)',[resubmittedDoc,{},'Needs another correction.']);
+await as('resubmitter');await db.query('UPDATE public.properties SET title=title WHERE id=$1',[resubmittedProperty]);
+await db.query('UPDATE public.properties SET availability_confirmed_at=now() WHERE id=$1',[resubmittedProperty]);
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[resubmittedProperty])).rows[0].status,'rejected');
+await db.query("UPDATE public.properties SET description='Corrected ownership explanation' WHERE id=$1",[resubmittedProperty]);
+await assertResubmitted();
+await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[resubmittedDoc,checks,'Corrections and retained evidence reviewed.']);await db.query('SELECT public.admin_publish_property($1)',[resubmittedProperty]);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT count(*)::int AS n FROM public.ownership_reviews WHERE document_id=$1',[resubmittedDoc])).rows[0].n,3);
+assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.resubmitter])).rows[0].seller_status,'active');
+console.log('Rejected resubmission checks passed: existing stuck edits repaired, new content edits requeue retained evidence, no-op/freshness edits stay rejected, immutable decisions retained and fresh approval required.');
+
 const diagnosticSql=fs.readFileSync('supabase/diagnostics/ownership-review-reset.sql','utf8').replace('f0aeee08-6dce-44ae-9e3c-f467dc6fb059',ids.reviewedProperty);
 await db.exec('BEGIN READ ONLY');const diagnostic=JSON.parse((await db.query(diagnosticSql)).rows[0].ownership_review_diagnostic);await db.exec('ROLLBACK');
 assert.equal(diagnostic.property.id,ids.reviewedProperty);assert.equal(diagnostic.actual_listing_seller.profile_id,ids.fresh);assert.ok(diagnostic.review_related_triggers.some(t=>t.function==='brick_private.evidence_resubmitted'));assert.ok(diagnostic.installed_review_routines.some(f=>f.function==='public.review_property_ownership'));
