@@ -16,6 +16,8 @@ export default function AdminUsersPage() {
 
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [processing, setProcessing] = useState(false)
+  const [activationNote, setActivationNote] = useState("")
+  useEffect(() => { setActivationNote(""); }, [selected?.id])
 
   const [adminId, setAdminId] = useState<string | null>(null)
 
@@ -117,45 +119,16 @@ export default function AdminUsersPage() {
   /* ================= PROMOTE SELLER ================= */
 
   async function promoteSeller(user: any) {
-
-    if (user.kyc_status !== "approved") {
-      alert("User KYC must be approved first")
-      return
-    }
-
-    const { data } = await supabase.auth.getUser()
-    const adminId = data.user?.id
-
-    if (!adminId) {
-      alert("Session expired")
-      return
-    }
-
-    setProcessing(true)
-
-    const { error } = await supabase
-      .from("users")
-      .update({ role: "seller" })
-      .eq("id", user.id)
-
-    if (error) {
-      alert(error.message || "Account action failed");
-      console.error(error)
-      setProcessing(false)
-      return
-    }
-
-    await logAction(
-      adminId,
-      "user",
-      user.id,
-      "promote_seller",
-      "Admin promoted user"
-    )
-
-    updateLocalUser({ ...user, role: "seller" })
-
-    setProcessing(false)
+    if (processing) return;
+    if (!activationNote.trim()) { alert("Enter a seller activation review note first."); return; }
+    setProcessing(true);
+    try {
+      const { error } = await supabase.rpc("admin_activate_verified_seller", { p_user_id: user.id, p_note: activationNote.trim() });
+      if (error) throw new Error(error.message);
+      updateLocalUser({ ...user, role: "seller", seller_status: "active" });
+      setActivationNote("");
+    } catch (error) { alert(error instanceof Error ? error.message : "Seller activation failed."); }
+    finally { setProcessing(false); }
   }
 
   /* ================= DEMOTE SELLER ================= */
@@ -360,6 +333,7 @@ export default function AdminUsersPage() {
                 Joined: {new Date(selected.created_at).toLocaleDateString()}
               </div>
 
+              {selected.role !== "admin" && <div className="mb-4 space-y-2"><p className="text-sm">Owner-only declaration: {selected.owner_declaration_at ? "Recorded" : "Not saved"}. Activation checks approved government ID and selfie files, and updates both seller role and active status.</p><label className="block text-sm">Seller activation review note (required to activate)<textarea value={activationNote} onChange={event => setActivationNote(event.target.value)} className="mt-2 block w-full rounded border p-2" placeholder="Record why the reviewed identity and declaration qualify this account for seller access." /></label></div>}
               <div className="flex flex-wrap gap-3">
                 {selected.role === "admin" && <button type="button" disabled={processing || selected.user_id === adminId} onClick={() => revokeStaffAdmin(selected)} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-50">Revoke staff admin</button>}
 
@@ -380,11 +354,11 @@ export default function AdminUsersPage() {
                 </button>
 
                 <button
-                  disabled={processing || selected.role !== "buyer"}
+                  disabled={processing || selected.role === "admin" || selected.kyc_status !== "approved" || !activationNote.trim() || (selected.role === "seller" && selected.seller_status === "active")}
                   onClick={() => promoteSeller(selected)}
                   className="bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded"
                 >
-                  Promote Seller
+                  Activate Seller Access
                 </button>
 
                 <button
