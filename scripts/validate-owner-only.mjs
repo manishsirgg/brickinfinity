@@ -115,4 +115,33 @@ await db.query('SELECT public.manage_staff_admin($1,true)',[ids.buyer]);
 await db.query('SELECT public.manage_staff_admin($1,false)',[ids.buyer]);
 await as('buyer');await assert.rejects(db.query('SELECT public.manage_staff_admin($1,true)',[ids.other]),/Staff admin access/);
 await db.exec('RESET ROLE');assert.equal((await db.query('SELECT count(*)::int AS n FROM public.ownership_reviews')).rows[0].n,2);
+// A legacy user trigger can turn a declaration-only edit into inactive seller
+// access. Reproduce that exact state, then test checked recovery/preservation.
+await db.exec(`CREATE FUNCTION public.legacy_declaration_status() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN IF NEW.seller_identity IS DISTINCT FROM OLD.seller_identity THEN NEW.seller_status:='basic'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER legacy_declaration_status BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.legacy_declaration_status();`);
+await as('builder');await db.query("SELECT public.declare_owner_identity('owner',true)");
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.builder])).rows[0].seller_status,'basic');
+const declarationAccess=fs.readFileSync('supabase/migrations/20261111_declaration_seller_access.sql','utf8');await db.exec(declarationAccess);await db.exec(declarationAccess);
+await as('builder');await assert.rejects(db.query('SELECT public.admin_activate_verified_seller($1,$2)',[ids.builder,'Self restore']),/Staff admin/);
+await db.query("SELECT public.declare_owner_identity('project_owner_builder',true)");
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.builder])).rows[0].seller_status,'basic');
+await as('admin');await assert.rejects(db.query('SELECT public.admin_activate_verified_seller($1,$2)',[ids.builder,' ']),/review note/);
+await db.query('SELECT public.admin_activate_verified_seller($1,$2)',[ids.builder,'Current ID, selfie files and declaration reviewed']);
+await db.exec('RESET ROLE');await db.query("UPDATE public.properties SET status='active',verification_status='approved',ownership_verified=true,ownership_review_status='approved',ownership_reviewed_at=now(),identity_reviewed_at=now(),listing_reviewed_at=now() WHERE id=$1",[ids.project]);
+await as('builder');await db.query("SELECT public.declare_owner_identity('owner',true)");
+await db.exec('RESET ROLE');const preserved=(await db.query('SELECT role,seller_status,kyc_status FROM public.users WHERE id=$1',[ids.builder])).rows[0];assert.equal(preserved.role,'seller');assert.equal(preserved.seller_status,'active');assert.equal(preserved.kyc_status,'approved');
+const paused=(await db.query('SELECT status,ownership_verified,ownership_reviewed_at FROM public.properties WHERE id=$1',[ids.project])).rows[0];assert.equal(paused.status,'pending');assert.equal(paused.ownership_verified,false);assert.equal(paused.ownership_reviewed_at,null);
+await as('builder');await db.query("SELECT public.declare_owner_identity('project_owner_builder',true)");
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.builder])).rows[0].seller_status,'active');
+await as('admin');await db.query("UPDATE public.users SET role='buyer' WHERE id=$1",[ids.builder]);
+await as('builder');await db.query("SELECT public.declare_owner_identity('owner',true)");
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT role FROM public.users WHERE id=$1',[ids.builder])).rows[0].role,'buyer');
+await as('admin');await assert.rejects(db.query('SELECT public.admin_activate_verified_seller($1,$2)',[ids.owner,'Review rejected identity']),/Approved government ID/);
+await assert.rejects(db.query('SELECT public.admin_activate_verified_seller($1,$2)',[ids.other,'Review missing evidence']),/Approved government ID/);
+await db.exec('RESET ROLE');ids.fresh='00000000-0000-0000-0000-000000000090';await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status) VALUES($1,$1,'buyer','approved','basic')",[ids.fresh]);
+for(const type of ['aadhar','selfie']){const path=ids.fresh+'/'+type+'/reviewed';await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[ids.fresh,type,path]);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);}
+await as('fresh');await db.query("SELECT public.declare_owner_identity('owner',true)");
+await db.exec('RESET ROLE');const firstAccess=(await db.query('SELECT role,seller_status FROM public.users WHERE id=$1',[ids.fresh])).rows[0];assert.equal(firstAccess.role,'seller');assert.equal(firstAccess.seller_status,'active');
+console.log('Declaration-access checks passed: reproduced legacy inactive status, checked staff recovery, active owner/builder switches preserve access while pausing listings, demotion cannot self-reactivate, fresh verified onboarding.');
 await db.close();console.log('Owner-only database checks passed: protected roles/approvals, no agents/brokerage, owner and builder evidence, atomic reviews, legacy pause, public/private access, material/media re-review and revocation.');
