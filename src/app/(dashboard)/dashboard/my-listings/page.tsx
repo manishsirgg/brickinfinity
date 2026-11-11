@@ -1,5 +1,7 @@
 "use client";
 
+import PropertyViews from "@/components/property/PropertyViews";
+
 import { getCoverImage } from "@/lib/property-images";
 import { useEffect, useState, useCallback } from "react";
 import FeaturedListingModal from "@/components/property-featured/FeaturedListingModal";
@@ -379,9 +381,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
                   {property.status}
                 </span>
 
-                <p className="text-xs text-muted">
-                  Views: {property.views_count || 0}
-                </p>
+                <PropertyViews count={property.views_count} />
 
                 <p className="text-xs text-muted">
                   Posted: {new Date(property.created_at)

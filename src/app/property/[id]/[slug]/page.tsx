@@ -1,3 +1,4 @@
+import PropertyViews from "@/components/property/PropertyViews";
 import LocationBreadcrumb from "@/components/property/LocationBreadcrumb";
 import PropertyDescription from "@/components/property/PropertyDescription";
 import { createClient } from "@/lib/supabase/server";
@@ -168,9 +169,14 @@ redirect(`/property/${property.id}/${property.slug}`);
 /* view counter */
 
 if (property.deleted_at === null) {
-  void supabase.rpc("increment_property_views", {
+  const { error: viewError } = await supabase.rpc("increment_property_views", {
     property_id: property.id
   });
+  if (viewError) console.error("Property view increment failed:", viewError);
+  else {
+    const { data: viewData } = await supabase.from("properties").select("views_count").eq("id", property.id).maybeSingle();
+    if (viewData) property.views_count = viewData.views_count;
+  }
 }
 
 /* seller */
@@ -282,6 +288,8 @@ Contact Seller
 <p className="text-muted">
 {locality}, {city}
 </p>
+
+<PropertyViews count={property.views_count} />
 
 <div className="flex flex-wrap items-center gap-3 sm:gap-6">
 
