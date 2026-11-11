@@ -1,16 +1,16 @@
 import { hasPropertyContactDetails } from "@/lib/property-description-policy";
 export const RENTAL_FEES = [
   { key: "security_deposit", label: "Refundable security deposit", period: "One-time" },
-  { key: "brokerage_charge", label: "Brokerage", period: "One-time" },
   { key: "maintenance_charges", label: "Maintenance", period: "Monthly" },
   { key: "parking_charge", label: "Parking charges", period: "Monthly" },
   { key: "other_monthly_charges", label: "Other recurring charges", period: "Monthly" },
   { key: "other_one_time_charges", label: "Other one-time charges", period: "One-time" },
 ] as const;
 export const PUBLIC_AVAILABILITY = ["unknown", "available", "available_from"];
-export type RentalDetails = { availability_status?: string; available_from?: string | null; availability_confirmed_at?: string | null; price_negotiable?: boolean | null; other_charges_note?: string | null } & Partial<Record<typeof RENTAL_FEES[number]["key"], string | number | null>>;
+export type RentalDetails = { brokerage_charge?: string | number | null; availability_status?: string; available_from?: string | null; availability_confirmed_at?: string | null; price_negotiable?: boolean | null; other_charges_note?: string | null } & Partial<Record<typeof RENTAL_FEES[number]["key"], string | number | null>>;
 export function rentalDetailsPayload(value: RentalDetails, isRent: boolean) {
   const result: Record<string, string | number | boolean | null> = {
+    brokerage_charge: isRent ? 0 : null,
     availability_status: value.availability_status || "unknown",
     available_from: value.availability_status === "available_from" ? value.available_from || null : null,
     price_negotiable: isRent ? value.price_negotiable ?? null : null,

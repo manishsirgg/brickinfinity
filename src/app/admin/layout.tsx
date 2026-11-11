@@ -35,7 +35,7 @@ export default async function AdminLayout({
             BrickInfinity Admin
           </Link>
 
-          <div className="flex gap-6 text-sm">
+          <div className="flex flex-wrap gap-4 text-sm">
 
             <Link href="/admin/kyc" className="hover:underline">
               KYC
@@ -64,6 +64,8 @@ export default async function AdminLayout({
             <Link href="/admin/blogs" className="hover:underline">
               Blogs
             </Link>
+
+            <Link href="/admin/ownership-audit" className="hover:underline">Ownership audit</Link>
 
             <Link href="/admin/logs" className="hover:underline">
               Logs

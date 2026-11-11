@@ -1,4 +1,6 @@
 "use client";
+import OwnerListingFields from "@/components/property/OwnerListingFields";
+import { validateOwnerFields, type OwnerFields } from "@/lib/owner-verification";
 import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
 import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
 
@@ -39,6 +41,7 @@ export default function EditPropertyPage() {
   const params = useParams();
   const propertyId = params.id as string;
 
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading,setLoading] = useState(true);
   const [saving,setSaving] = useState(false);
   const [message,setMessage] = useState("");
@@ -142,6 +145,8 @@ export default function EditPropertyPage() {
       return;
     }
 
+    const { data: actor } = await supabase.from("users").select("role").eq("user_id",session.user.id).maybeSingle();
+    setIsAdmin(actor?.role === "admin");
     setAmenities(data.amenities || []);
 
     setProperty({
@@ -337,6 +342,8 @@ export default function EditPropertyPage() {
   async function handleSave(){
 
     if (saving) return;
+    const ownerError = validateOwnerFields(property, isAdmin);
+    if (ownerError) { setMessage(ownerError); return; }
     const limitError = validatePropertyTextLimits(property.title, property.description);
     if (limitError) { setMessage(limitError); return; }
     if (hasPropertyContactDetails(property.title)) { setMessage(TITLE_CONTACT_MESSAGE); return; }
@@ -396,6 +403,10 @@ export default function EditPropertyPage() {
       const { error: propertyError } = await supabase
         .from("properties")
         .update({
+          owner_kind: property.owner_kind || null,
+          owner_legal_name: property.owner_legal_name || null,
+          owner_project_name: property.owner_project_name || null,
+          owner_attested: Boolean(property.owner_attested),
           title:property.title,
           description:property.description,
           price:canonicalPrice,
@@ -516,7 +527,7 @@ export default function EditPropertyPage() {
           if(error) throw new Error("Ownership upload failed");
 
           docsRows.push({
-            user_id:profileId,
+            user_id:property.seller_id || profileId,
             property_id:propertyId,
             document_type:"ownership",
             document_subtype:"resubmitted",
@@ -568,6 +579,8 @@ export default function EditPropertyPage() {
       {message && <div role="status" className="rounded-lg border p-4">{message}</div>}
 
       <fieldset disabled={saving} className="card-soft min-w-0 p-8 space-y-8 disabled:opacity-75">
+
+        <OwnerListingFields value={property} onChange={patch => setProperty((prev: typeof property) => ({ ...prev, ...patch }))} isAdmin={isAdmin} />
 
         {/* BASIC */}
 

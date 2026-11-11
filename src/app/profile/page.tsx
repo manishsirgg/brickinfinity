@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import OwnerIdentityDeclaration from "@/components/OwnerIdentityDeclaration";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -29,6 +30,8 @@ interface Profile {
   kyc_status: string;
   seller_status?: string | null;
   role?: string | null;
+  seller_identity?: string | null;
+  owner_declaration_at?: string | null;
 }
 
 interface DocumentRow {
@@ -67,8 +70,6 @@ export default function ProfilePage() {
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [upgradeTarget, setUpgradeTarget] =
-    useState<"seller" | "admin">("seller");
   const [kycRejectionReason, setKycRejectionReason] = useState<string | null>(null);
 
   useEffect(() => {
@@ -151,9 +152,6 @@ export default function ProfilePage() {
   }
 
   setProfile(data);
-  setUpgradeTarget(
-    data.seller_status === "pending_admin" ? "admin" : "seller"
-  );
 
   /* Load KYC docs */
 
@@ -371,18 +369,11 @@ if (existing?.document_url) {
       .from("users")
       .update({
         kyc_status: "pending",
-        seller_status:
-          upgradeTarget === "admin"
-            ? "pending_admin"
-            : "pending_seller",
+        seller_status: "pending_seller",
       })
       .eq("user_id", sessionUser.id);
 
-    setMessage(
-      upgradeTarget === "admin"
-        ? `${type.replace("_", " ")} uploaded. Admin access request recorded and sent for manual review after KYC approval.`
-        : `${type.replace("_", " ")} uploaded for seller verification.`
-    );
+    setMessage(`${type.replace("_", " ")} uploaded for owner identity verification.`);
     fetchProfile();
 
   } catch (err: any) {
@@ -507,10 +498,13 @@ const approvalTarget =
 
             <div className="grid md:grid-cols-3 gap-6">
 
-              <Input
+              <div>
+              <Input aria-label="Full name"
                 value={profile?.full_name || ""}
                 onChange={(e:any)=>setProfile(prev=>prev?{...prev,full_name:e.target.value}:prev)}
               />
+              {profile?.kyc_status === "approved" && profile?.role !== "admin" && <p className="text-xs text-amber-800">Changing your verified name requires identity re-review and pauses your listings.</p>}
+              </div>
 
               <Input
                 value={profile?.phone || ""}
@@ -549,7 +543,7 @@ const approvalTarget =
 
             {profile?.kyc_status === "approved" && approvalTarget === "admin" && (
               <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-                Your admin application has been approved. You now have admin access.
+                Your staff admin access is active.
               </p>
             )}
 
@@ -587,35 +581,15 @@ const approvalTarget =
 	          <Card className="p-6 space-y-6">
 
 	            <h2 className="text-lg font-semibold">
-	              Seller Verification
+	              Owner / Builder Identity Verification
 	            </h2>
 
               {uploadingKyc && (
                 <p className="text-sm text-blue-600">Uploading document... Please wait.</p>
               )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Upgrade request type
-                </label>
-                <select
-                  value={upgradeTarget}
-                  disabled={uploadingKyc || profile?.kyc_status === "approved"}
-                  onChange={(e) =>
-                    setUpgradeTarget(
-                      e.target.value === "admin" ? "admin" : "seller"
-                    )
-                  }
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="seller">Upgrade to Seller</option>
-                  <option value="admin">Request Admin Upgrade</option>
-                </select>
-                <p className="text-xs text-gray-500">
-                  Admin upgrade requests are never automatic; they require
-                  manual approval by an existing admin after KYC review.
-                </p>
-              </div>
+              {profile?.role !== "admin" && <OwnerIdentityDeclaration key={profile?.seller_identity || "new-owner"} initialIdentity={profile?.seller_identity} onSaved={fetchProfile} />}
+              {profile?.owner_declaration_at && <p className="text-sm text-emerald-700">Owner-only declaration recorded. Category: {profile.seller_identity === "project_owner_builder" ? "Project-owning builder" : "Actual owner"}.</p>}
 
 	            <div className="grid sm:grid-cols-2 gap-6">
 

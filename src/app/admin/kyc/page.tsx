@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { logAction } from "@/lib/moderation/logAction"
 
 const supabase = createClient()
 
@@ -96,168 +95,24 @@ export default function AdminKYCPage() {
 
   }, [selected])
 
-  function getRequestedRole(sellerStatus?: string) {
-    if (sellerStatus === "pending_admin" || sellerStatus === "admin_review_required") {
-      return "admin"
-    }
-    return "seller"
-  }
+  function getRequestedRole(_sellerStatus?: string): string { return "seller"; }
 
   /* ================= APPROVE ================= */
 
-  async function approve(doc: any) {
-
-    const { data } = await supabase.auth.getUser()
-    const adminId = data.user?.id
-
-    if (!adminId) {
-      alert("Session expired. Please login again.")
-      return
-    }
-
-    setProcessing(true)
-
-    /* ---- Approve this document ---- */
-
-    const { error } = await supabase
-      .from("documents")
-      .update({
-        status: "approved",
-        reviewed_at: new Date(),
-        reviewed_by: adminId
-      })
-      .eq("id", doc.id)
-
-    if (error) {
-      console.error("Approve error:", error)
-      setProcessing(false)
-      return
-    }
-
-    /* ---- STRICT KYC RULE CHECK ---- */
-
-    const { data: allDocs } = await supabase
-      .from("documents")
-      .select("document_type, status")
-      .eq("user_id", doc.user_id)
-
-    const hasApprovedSelfie = allDocs?.some(
-      (d: any) =>
-        d.document_type === "selfie" &&
-        d.status === "approved"
-    )
-
-    const hasApprovedGovtId = allDocs?.some(
-      (d: any) =>
-        (
-          d.document_type === "aadhar" ||
-          d.document_type === "passport" ||
-          d.document_type === "driving_license"
-        ) &&
-        d.status === "approved"
-    )
-
-    if (hasApprovedSelfie && hasApprovedGovtId) {
-      const requestedAdmin =
-        doc?.users?.seller_status === "pending_admin"
-
-      await supabase
-        .from("users")
-        .update({
-          kyc_status: "approved",
-          role: "seller",
-          seller_status: requestedAdmin
-            ? "admin_review_required"
-            : "active"
-        })
-        .eq("id", doc.user_id)
-
-    }
-
-    /* ---- LOG ---- */
-
-    await logAction(
-      adminId,
-      "user",
-      doc.user_id,
-      "approve_kyc",
-      `Approved ${doc.document_type}`
-    )
-
-    setSelected(null)
-    setImageUrl(null)
-
-    await fetchQueue()
-
-    setProcessing(false)
+  async function reviewIdentity(doc: any, approve: boolean) {
+    if (processing) return;
+    const note = approve ? prompt("Record the identity / selfie matching review note") : rejectReason.trim();
+    if (!note?.trim()) { alert("A review note or rejection reason is required."); return; }
+    setProcessing(true);
+    try {
+      const { error } = await supabase.rpc("review_identity_document", { p_document_id: doc.id, p_approve: approve, p_note: note.trim() });
+      if (error) throw new Error(error.message);
+      setSelected(null); setImageUrl(null); setRejectReason(""); await fetchQueue();
+    } catch (error) { alert(error instanceof Error ? error.message : "Identity review failed"); }
+    finally { setProcessing(false); }
   }
-
-  /* ================= REJECT ================= */
-
-  async function reject(doc: any) {
-    const reason = rejectReason.trim()
-    if (!reason) {
-      alert("Rejection reason is required.")
-      return
-    }
-
-    const { data } = await supabase.auth.getUser()
-    const adminId = data.user?.id
-
-    if (!adminId) {
-      alert("Session expired. Please login again.")
-      return
-    }
-
-    setProcessing(true)
-
-    const { error } = await supabase
-      .from("documents")
-      .update({
-        status: "rejected",
-        rejection_reason: reason,
-        reviewed_at: new Date(),
-        reviewed_by: adminId
-      })
-      .eq("id", doc.id)
-
-    if (error) {
-      console.error("Reject error:", error)
-      setProcessing(false)
-      return
-    }
-
-    const { error: userUpdateError } = await supabase
-      .from("users")
-      .update({
-        kyc_status: "rejected",
-        role: "buyer",
-        seller_status: "basic"
-      })
-      .eq("id", doc.user_id)
-
-    if (userUpdateError) {
-      console.error("User KYC reject sync error:", userUpdateError)
-      setProcessing(false)
-      return
-    }
-
-    await logAction(
-      adminId,
-      "user",
-      doc.user_id,
-      "reject_kyc",
-      reason
-    )
-
-    setSelected(null)
-    setImageUrl(null)
-    setRejectReason("")
-
-    await fetchQueue()
-
-    setProcessing(false)
-  }
+  const approve = (doc: any) => reviewIdentity(doc,true);
+  const reject = (doc: any) => reviewIdentity(doc,false);
 
   /* ================= UI ================= */
 

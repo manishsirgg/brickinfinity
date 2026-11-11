@@ -1,3 +1,4 @@
+import VerificationBadges from "@/components/property/VerificationBadges";
 import RentalCostBreakdown from "@/components/property/RentalCostBreakdown";
 import PropertyAvailability from "@/components/property/PropertyAvailability";
 import { PUBLIC_AVAILABILITY } from "@/lib/property-rental-details";
@@ -487,7 +488,7 @@ Seller
 </div>
 
 <div className="text-xs text-green-600">
-✔ Verified Seller
+<VerificationBadges property={property} />
 </div>
 
 </div>
