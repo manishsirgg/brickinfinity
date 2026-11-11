@@ -7,7 +7,7 @@ import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFi
 import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
 
 import TextLimitCounter from "@/components/property/TextLimitCounter";
-import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
+import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords, PROPERTY_DESCRIPTION_WORD_LIMIT } from "@/lib/property-text-limits";
 
 import { hasPropertyContactDetails, DESCRIPTION_CONTACT_MESSAGE, TITLE_CONTACT_MESSAGE } from "@/lib/property-description-policy";
 
@@ -710,7 +710,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
                     <textarea
                       className="textarea-premium"
                       aria-describedby="description-contact-hint description-limit"
-                      aria-invalid={hasPropertyContactDetails(form.description) || countDescriptionWords(form.description) > 3000}
+                      aria-invalid={hasPropertyContactDetails(form.description) || countDescriptionWords(form.description) > PROPERTY_DESCRIPTION_WORD_LIMIT}
                       value={form.description}
                       onChange={(e)=>
                         setForm({...form,description:e.target.value})
