@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
 const ids={admin:'00000000-0000-0000-0000-000000000001',owner:'00000000-0000-0000-0000-000000000002',other:'00000000-0000-0000-0000-000000000003',builder:'00000000-0000-0000-0000-000000000004',buyer:'00000000-0000-0000-0000-000000000005',legacy:'00000000-0000-0000-0000-000000000010',staffListing:'00000000-0000-0000-0000-000000000011',property:'00000000-0000-0000-0000-000000000012',project:'00000000-0000-0000-0000-000000000013',evidence:'00000000-0000-0000-0000-000000000020',builderEvidence:'00000000-0000-0000-0000-000000000021'};
-await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE SCHEMA auth;CREATE SCHEMA storage;
+const setupSchema=`CREATE ROLE anon;CREATE ROLE authenticated;CREATE SCHEMA auth;CREATE SCHEMA storage;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 CREATE TYPE role_type AS ENUM('buyer','seller','admin');CREATE TYPE kyc_type AS ENUM('not_submitted','pending','approved','rejected');CREATE TYPE seller_type AS ENUM('basic','pending_seller','active','pending_admin','admin_review_required');
 CREATE TYPE prop_status AS ENUM('draft','pending','active','approved','rejected');CREATE TYPE verification_type AS ENUM('awaiting_ownership','ownership_submitted','ownership_approved','approved','ownership_rejected','listing_rejected','edited_requires_review');CREATE TYPE doc_status AS ENUM('pending','approved','rejected');
@@ -18,7 +18,13 @@ INSERT INTO storage.buckets VALUES('identity-documents',true),('ownership-docume
 GRANT USAGE ON SCHEMA public,auth,storage TO authenticated,anon;
 GRANT ALL ON ALL TABLES IN SCHEMA public,storage TO authenticated;GRANT SELECT ON public.properties,storage.objects TO anon;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;ALTER TABLE public.properties ENABLE ROW LEVEL SECURITY;ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-CREATE POLICY old_users ON public.users FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_properties ON public.properties FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_public ON public.properties FOR SELECT TO anon USING(true);CREATE POLICY old_docs ON public.documents FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_storage ON storage.objects FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_storage_public ON storage.objects FOR SELECT TO anon USING(true);`);
+CREATE POLICY old_users ON public.users FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_properties ON public.properties FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_public ON public.properties FOR SELECT TO anon USING(true);CREATE POLICY old_docs ON public.documents FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_storage ON storage.objects FOR ALL TO authenticated USING(true) WITH CHECK(true);CREATE POLICY old_storage_public ON storage.objects FOR SELECT TO anon USING(true);`;
+// The supplied live schema uses varchar statuses; also retain enum coverage.
+const testSchema=process.argv.includes('--text-schema') ? setupSchema
+  .replace('role role_type','role varchar').replace('kyc_status kyc_type','kyc_status varchar')
+  .replace('seller_status seller_type','seller_status varchar').replace('status prop_status','status varchar')
+  .replace('verification_status verification_type','verification_status varchar').replace('status doc_status','status varchar') : setupSchema;
+await db.exec(testSchema);
 for(const [key,id] of Object.entries(ids).filter(([k])=>['admin','owner','other','builder','buyer'].includes(k))) await db.query("INSERT INTO public.users(id,user_id,full_name,role,kyc_status,seller_status) VALUES($1,$1,$2,$3,'approved','active')",[id,key,key==='admin'?'admin':key==='buyer'?'buyer':'seller']);
 await db.query("INSERT INTO public.properties(id,seller_id,title,status,verification_status,ownership_verified) VALUES($1,$2,'Legacy','active','approved',true),($3,$4,'Admin legacy','active','approved',true)",[ids.legacy,ids.owner,ids.staffListing,ids.admin]);
 const migration=fs.readFileSync('supabase/migrations/20261111_owner_only_verification.sql','utf8');await db.exec(migration);await db.exec(migration);
@@ -151,9 +157,12 @@ const reviewedChanges=fs.readFileSync('supabase/migrations/20261111_reviewed_dec
 await db.exec(`CREATE FUNCTION public.unsafe_profile_default() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.role::text='seller' AND NEW.kyc_status::text='approved' THEN NEW.seller_status:='basic'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER unsafe_profile_default BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.unsafe_profile_default();`);
 await assert.rejects(db.exec(reviewedChanges),/legacy trigger changed account access/);await db.exec('ROLLBACK');
+assert.equal((await db.query("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='declaration_locked_at'")).rows[0].n,0);
 assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.fresh])).rows[0].seller_status,'active');
 await db.exec('DROP TRIGGER unsafe_profile_default ON public.users;DROP FUNCTION public.unsafe_profile_default()');
-await db.exec(reviewedChanges);await db.exec(reviewedChanges);
+// The SQL Editor/extended-query path must accept the complete file as one
+// statement, including repeat execution against already-created objects.
+await db.query(reviewedChanges);await db.query(reviewedChanges);
 assert.ok((await db.query('SELECT declaration_locked_at FROM public.users WHERE id=$1',[ids.fresh])).rows[0].declaration_locked_at);
 assert.equal((await db.query("SELECT public FROM storage.buckets WHERE id='declaration-documents'")).rows[0].public,false);
 await as('fresh');await assert.rejects(db.query("SELECT public.declare_owner_identity('project_owner_builder',true)"),/locked/);

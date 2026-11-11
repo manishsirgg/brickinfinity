@@ -1,11 +1,17 @@
-BEGIN;
+-- Run this entire file as one statement in Supabase SQL Editor.
+-- Local snapshots avoid session-scoped temporary tables and ON COMMIT DROP.
+DO $reviewed_declaration_migration$
+DECLARE
+ access_before jsonb;
+ listings_before jsonb;
+BEGIN
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS declaration_locked_at timestamptz,
   ADD COLUMN IF NOT EXISTS seller_legal_name text;
-CREATE TEMP TABLE brick_declaration_access_before ON COMMIT DROP AS
- SELECT id,role::text AS role,kyc_status::text AS kyc_status,seller_status::text AS seller_status,seller_identity FROM public.users;
-CREATE TEMP TABLE brick_declaration_listings_before ON COMMIT DROP AS
- SELECT id,status::text AS status,verification_status::text AS verification_status,ownership_verified,
-  ownership_review_status,ownership_reviewed_at,identity_reviewed_at,listing_reviewed_at FROM public.properties;
+SELECT coalesce(jsonb_agg(jsonb_build_array(id,role::text,kyc_status::text,seller_status::text,seller_identity) ORDER BY id),'[]'::jsonb)
+ INTO access_before FROM public.users;
+SELECT coalesce(jsonb_agg(jsonb_build_array(id,status::text,verification_status::text,ownership_verified,
+ ownership_review_status,extract(epoch FROM ownership_reviewed_at),extract(epoch FROM identity_reviewed_at),extract(epoch FROM listing_reviewed_at)) ORDER BY id),'[]'::jsonb)
+ INTO listings_before FROM public.properties;
 -- Verification is a sticky boundary: setting KYC pending later cannot reopen
 -- unrestricted declaration editing. Existing reviewed accounts are locked too.
 UPDATE public.users u SET declaration_locked_at=now() WHERE declaration_locked_at IS NULL AND (
@@ -13,16 +19,14 @@ UPDATE public.users u SET declaration_locked_at=now() WHERE declaration_locked_a
   EXISTS(SELECT 1 FROM public.account_security_events e WHERE e.user_id=u.id AND
     (e.details->>'old_kyc'='approved' OR e.details->>'new_kyc'='approved' OR e.details->>'old_role' IN ('seller','admin') OR e.details->>'new_role' IN ('seller','admin'))));
 -- Some deployments have legacy triggers on every profile update. Abort the
--- whole migration rather than silently changing access or published inventory.
-DO $$ BEGIN
- IF EXISTS(SELECT 1 FROM pg_temp.brick_declaration_access_before b JOIN public.users u ON u.id=b.id
-   WHERE ROW(u.role::text,u.kyc_status::text,u.seller_status::text,u.seller_identity) IS DISTINCT FROM ROW(b.role,b.kyc_status,b.seller_status,b.seller_identity))
- OR EXISTS(SELECT 1 FROM pg_temp.brick_declaration_listings_before b JOIN public.properties p ON p.id=b.id
-   WHERE ROW(p.status::text,p.verification_status::text,p.ownership_verified,p.ownership_review_status,p.ownership_reviewed_at,p.identity_reviewed_at,p.listing_reviewed_at)
-    IS DISTINCT FROM ROW(b.status,b.verification_status,b.ownership_verified,b.ownership_review_status,b.ownership_reviewed_at,b.identity_reviewed_at,b.listing_reviewed_at)) THEN
-  RAISE EXCEPTION 'A legacy trigger changed account access or listing review during declaration locking. Migration rolled back; inspect the legacy triggers before retrying.';
- END IF;
-END $$;
+-- whole statement rather than silently changing access or published inventory.
+IF access_before IS DISTINCT FROM (
+ SELECT coalesce(jsonb_agg(jsonb_build_array(id,role::text,kyc_status::text,seller_status::text,seller_identity) ORDER BY id),'[]'::jsonb) FROM public.users)
+ OR listings_before IS DISTINCT FROM (
+ SELECT coalesce(jsonb_agg(jsonb_build_array(id,status::text,verification_status::text,ownership_verified,
+ ownership_review_status,extract(epoch FROM ownership_reviewed_at),extract(epoch FROM identity_reviewed_at),extract(epoch FROM listing_reviewed_at)) ORDER BY id),'[]'::jsonb) FROM public.properties) THEN
+ RAISE EXCEPTION 'A legacy trigger changed account access or listing review during declaration locking. Migration rolled back; inspect the legacy triggers before retrying.';
+END IF;
 CREATE OR REPLACE FUNCTION brick_private.guard_declaration_lock() RETURNS trigger
 LANGUAGE plpgsql SET search_path TO pg_catalog,public,pg_temp AS $$
 BEGIN
@@ -221,4 +225,5 @@ DROP POLICY IF EXISTS retain_declaration_evidence_delete ON storage.objects;
 CREATE POLICY retain_declaration_evidence_delete ON storage.objects AS RESTRICTIVE FOR DELETE TO authenticated
  USING(bucket_id<>'declaration-documents' OR NOT brick_private.declaration_evidence_referenced(name));
 REVOKE ALL ON FUNCTION brick_private.guard_declaration_lock() FROM PUBLIC,anon,authenticated;
-COMMIT;
+END;
+$reviewed_declaration_migration$;
