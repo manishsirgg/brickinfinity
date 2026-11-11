@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { logAction } from "@/lib/moderation/logAction"
+import { useFormFeedback } from "@/lib/use-form-feedback"
 
 const supabase = createClient()
 
@@ -16,8 +17,10 @@ export default function AdminUsersPage() {
 
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [processing, setProcessing] = useState(false)
+  const [activatingSeller, setActivatingSeller] = useState(false)
   const [activationNote, setActivationNote] = useState("")
-  useEffect(() => { setActivationNote(""); }, [selected?.id])
+  const { feedback, feedbackRef, showFeedback } = useFormFeedback()
+  useEffect(() => { setActivationNote(""); showFeedback(""); }, [selected?.id, showFeedback])
 
   const [adminId, setAdminId] = useState<string | null>(null)
 
@@ -120,15 +123,25 @@ export default function AdminUsersPage() {
 
   async function promoteSeller(user: any) {
     if (processing) return;
-    if (!activationNote.trim()) { alert("Enter a seller activation review note first."); return; }
+    if (!activationNote.trim()) { showFeedback("Enter a seller activation review note first."); return; }
+    showFeedback("");
     setProcessing(true);
+    setActivatingSeller(true);
     try {
       const { error } = await supabase.rpc("admin_activate_verified_seller", { p_user_id: user.id, p_note: activationNote.trim() });
       if (error) throw new Error(error.message);
-      updateLocalUser({ ...user, role: "seller", seller_status: "active" });
+      const { data: savedUser, error: readError } = await supabase.from("users").select("*").eq("id", user.id).single();
+      if (readError || !savedUser) {
+        throw new Error("The activation request completed, but the saved account status could not be confirmed. Refresh this page before trying activation again. Your review note has been kept.");
+      }
+      updateLocalUser(savedUser);
+      if (savedUser.role !== "seller" || savedUser.seller_status !== "active" || savedUser.kyc_status !== "approved" || !savedUser.owner_declaration_at) {
+        throw new Error("The account is not fully active after the activation request. The displayed status has been refreshed; check its identity approval, declaration and seller status. Your review note has been kept.");
+      }
       setActivationNote("");
-    } catch (error) { alert(error instanceof Error ? error.message : "Seller activation failed."); }
-    finally { setProcessing(false); }
+      showFeedback(`Seller access activated successfully for ${savedUser.full_name || "this user"}. Saved account status confirmed: seller role, approved identity and active seller access. The user can refresh their Profile and open the dashboard. Property ownership reviews remain separate.`, "success");
+    } catch (error) { showFeedback(error instanceof Error ? error.message : "Seller activation could not be confirmed. Your review note has been kept."); }
+    finally { setProcessing(false); setActivatingSeller(false); }
   }
 
   /* ================= DEMOTE SELLER ================= */
@@ -224,6 +237,7 @@ export default function AdminUsersPage() {
   }
 
   /* ================= UI ================= */
+  const sellerAccessActive = selected?.role === "seller" && selected?.seller_status === "active" && selected?.kyc_status === "approved" && Boolean(selected?.owner_declaration_at);
 
   return (
 
@@ -232,6 +246,7 @@ export default function AdminUsersPage() {
       <h1 className="text-2xl font-semibold mb-8">
         User Management
       </h1>
+      {feedback.text && <div ref={feedbackRef} tabIndex={-1} role={feedback.kind === "error" ? "alert" : "status"} className={`mb-6 rounded-lg border p-4 outline-none ${feedback.kind === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{feedback.text}</div>}
 
       <div className="grid grid-cols-3 gap-6">
 
@@ -253,7 +268,8 @@ export default function AdminUsersPage() {
 
               <div
                 key={user.id}
-                onClick={() => setSelected(user)}
+                onClick={() => { if (!processing) setSelected(user); }}
+                aria-disabled={processing}
                 className={`border rounded-md p-3 cursor-pointer hover:bg-gray-100 ${
                   selected?.id === user.id ? "bg-gray-100" : ""
                 }`}
@@ -333,7 +349,7 @@ export default function AdminUsersPage() {
                 Joined: {new Date(selected.created_at).toLocaleDateString()}
               </div>
 
-              {selected.role !== "admin" && <div className="mb-4 space-y-2"><p className="text-sm">Owner-only declaration: {selected.owner_declaration_at ? "Recorded" : "Not saved"}. Activation checks approved government ID and selfie files, and updates both seller role and active status.</p><label className="block text-sm">Seller activation review note (required to activate)<textarea value={activationNote} onChange={event => setActivationNote(event.target.value)} className="mt-2 block w-full rounded border p-2" placeholder="Record why the reviewed identity and declaration qualify this account for seller access." /></label></div>}
+              {selected.role !== "admin" && <div className="mb-4 space-y-2"><p className="text-sm">Owner-only declaration: {selected.owner_declaration_at ? "Recorded" : "Not saved"}. Activation checks approved government ID and selfie files, and updates both seller role and active status.</p>{sellerAccessActive ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Seller access is active. No additional activation note is needed. The user can refresh Profile and try opening their dashboard.</p> : <label className="block text-sm">Seller activation review note (required to activate)<textarea value={activationNote} disabled={processing} onChange={event => setActivationNote(event.target.value)} className="mt-2 block w-full rounded border p-2" placeholder="Record why the reviewed identity and declaration qualify this account for seller access." /></label>}</div>}
               <div className="flex flex-wrap gap-3">
                 {selected.role === "admin" && <button type="button" disabled={processing || selected.user_id === adminId} onClick={() => revokeStaffAdmin(selected)} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-50">Revoke staff admin</button>}
 
@@ -358,7 +374,7 @@ export default function AdminUsersPage() {
                   onClick={() => promoteSeller(selected)}
                   className="bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded"
                 >
-                  Activate Seller Access
+                  {activatingSeller ? "Activating seller access…" : sellerAccessActive ? "✓ Seller access active" : "Activate Seller Access"}
                 </button>
 
                 <button
