@@ -1,8 +1,9 @@
 "use client";
 import OwnerListingFields from "@/components/property/OwnerListingFields";
-import { validateOwnerFields, type OwnerFields } from "@/lib/owner-verification";
+import { validateOwnerFields } from "@/lib/owner-verification";
+import { useFormFeedback } from "@/lib/use-form-feedback";
 import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
-import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
+import { rentalDetailsPayload } from "@/lib/property-rental-details";
 
 import TextLimitCounter from "@/components/property/TextLimitCounter";
 import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
@@ -42,9 +43,12 @@ export default function EditPropertyPage() {
   const propertyId = params.id as string;
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [declaredOwnerKind, setDeclaredOwnerKind] = useState<string | null>(null);
   const [loading,setLoading] = useState(true);
   const [saving,setSaving] = useState(false);
-  const [message,setMessage] = useState("");
+  const { feedback, feedbackRef, showFeedback } = useFormFeedback();
+  const message = feedback.text;
+  const setMessage = (text: string) => showFeedback(text, text === "Property updated successfully." ? "success" : "error");
 
   const [property,setProperty] = useState<any>(null);
 
@@ -145,8 +149,9 @@ export default function EditPropertyPage() {
       return;
     }
 
-    const { data: actor } = await supabase.from("users").select("role").eq("user_id",session.user.id).maybeSingle();
+    const { data: actor } = await supabase.from("users").select("role,seller_identity").eq("user_id",session.user.id).maybeSingle();
     setIsAdmin(actor?.role === "admin");
+    setDeclaredOwnerKind(actor?.seller_identity || null);
     setAmenities(data.amenities || []);
 
     setProperty({
@@ -360,6 +365,13 @@ export default function EditPropertyPage() {
 
       if(!session) throw new Error("Session expired");
 
+      const { data: actor, error: actorError } = await supabase.from("users").select("role,seller_identity").eq("user_id", session.user.id).single();
+      if (actorError || !actor) throw new Error("Could not verify your owner declaration. Refresh the page and try again.");
+      setIsAdmin(actor.role === "admin");
+      setDeclaredOwnerKind(actor.seller_identity || null);
+      const currentOwnerError = validateOwnerFields(property, actor.role === "admin", actor.seller_identity || null);
+      if (currentOwnerError) throw new Error(currentOwnerError);
+
       const costAndAvailability = rentalDetailsPayload(property, isRentListingType(property.listing_type));
       const profileId =
         await getProfileId(session.user.id);
@@ -536,19 +548,12 @@ export default function EditPropertyPage() {
           });
         }
 
-        await supabase
+        const { error: documentsError } = await supabase
           .from("documents")
           .insert(docsRows);
-
-        await supabase
-          .from("properties")
-          .update({
-            ownership_verified:false,
-            verification_status:"ownership_resubmitted",
-            status:"pending",
-            rejection_reason:null
-          })
-          .eq("id",propertyId);
+        if (documentsError) throw new Error(`Property details were saved, but ownership evidence could not be submitted: ${documentsError.message}`);
+        // The evidence_resubmitted database trigger invalidates ownership and
+        // queues review atomically. Do not issue a second unchecked update.
       }
 
       setMessage("Property updated successfully.");
@@ -576,11 +581,11 @@ export default function EditPropertyPage() {
 
       <h1 className="text-3xl font-semibold">Edit Property</h1>
 
-      {message && <div role="status" className="rounded-lg border p-4">{message}</div>}
+      {message && <div ref={feedbackRef} tabIndex={-1} role={feedback.kind === "error" ? "alert" : "status"} className={`rounded-lg border p-4 outline-none ${feedback.kind === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{message}</div>}
 
       <fieldset disabled={saving} className="card-soft min-w-0 p-8 space-y-8 disabled:opacity-75">
 
-        <OwnerListingFields value={property} onChange={patch => setProperty((prev: typeof property) => ({ ...prev, ...patch }))} isAdmin={isAdmin} />
+        <OwnerListingFields value={property} onChange={patch => setProperty((prev: typeof property) => ({ ...prev, ...patch }))} isAdmin={isAdmin} declaredOwnerKind={declaredOwnerKind} />
 
         {/* BASIC */}
 

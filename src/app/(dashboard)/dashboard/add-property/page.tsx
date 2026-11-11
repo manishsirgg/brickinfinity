@@ -1,4 +1,5 @@
 "use client";
+import { useFormFeedback } from "@/lib/use-form-feedback";
 import OwnerListingFields from "@/components/property/OwnerListingFields";
 import { validateOwnerFields, type OwnerFields } from "@/lib/owner-verification";
 import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
@@ -49,8 +50,12 @@ const [selectedState,setSelectedState] = useState("");
   const [step,setStep] = useState(1);
   const totalSteps = 4;
 
-  const [error,setError] = useState("");
-  const [success,setSuccess] = useState("");
+  const { feedback, feedbackRef, showFeedback } = useFormFeedback();
+  const error = feedback.kind === "error" ? feedback.text : "";
+  const success = feedback.kind === "success" ? feedback.text : "";
+  const setError = (text: string) => showFeedback(text, "error");
+  const setSuccess = (text: string) => showFeedback(text, "success");
+  const [declaredOwnerKind, setDeclaredOwnerKind] = useState<string | null>(null);
   const [submitting,setSubmitting] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<"buyer" | "seller" | "admin">("seller");
 
@@ -112,10 +117,11 @@ async function loadCurrentUserRole() {
 
   const { data } = await supabase
     .from("users")
-    .select("role")
+    .select("role,seller_identity")
     .eq("user_id", authId)
     .maybeSingle();
 
+  setDeclaredOwnerKind(data?.seller_identity || null);
   if (data?.role === "admin" || data?.role === "seller" || data?.role === "buyer") {
     setCurrentUserRole(data.role);
   }
@@ -262,7 +268,7 @@ async function loadLocalities(cityId:string){
 
   const validateStep=()=>{
     if(step===1){
-      const ownerError = validateOwnerFields(ownerFields, currentUserRole === "admin");
+      const ownerError = validateOwnerFields(ownerFields, currentUserRole === "admin", declaredOwnerKind);
       if (ownerError) return ownerError;
       const limitError = validatePropertyTextLimits(form.title, form.description);
       if (limitError) return limitError;
@@ -404,7 +410,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
     const profileId = await getProfileId(session.user.id);
     const { data: userRoleRecord } = await supabaseAction
       .from("users")
-      .select("role")
+      .select("role,seller_identity")
       .eq("user_id", session.user.id)
       .maybeSingle();
 
@@ -416,7 +422,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
         : currentUserRole;
 
     const isAdmin = resolvedRole === "admin";
-    const ownerError = validateOwnerFields(ownerFields, isAdmin);
+    const ownerError = validateOwnerFields(ownerFields, isAdmin, userRoleRecord?.seller_identity || null);
     if (ownerError) throw new Error(ownerError);
     const costAndAvailability = rentalDetailsPayload({ ...rentalDetails, maintenance_charges: form.maintenance }, isRentListingType(form.listingType));
     const localityId = await ensureLocality();
@@ -596,7 +602,6 @@ approved_at: isAdmin ? new Date().toISOString() : null
   }catch(err:any){
 
     console.error(err);
-    alert(err.message);
     setError(err.message || "Submission failed.");
 
   }finally{
@@ -611,6 +616,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
     <main className="container-custom py-10 space-y-8">
       <DashboardPageHeader title="List Your Property" description="Create a high-quality listing with complete details and media." showBackToDashboard />
+      {(error || success) && <div ref={feedbackRef} tabIndex={-1} role={error ? "alert" : "status"} className={`rounded-lg border p-4 outline-none ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{error || success}</div>}
 
       <div className="grid grid-cols-12 gap-8">
 
@@ -660,11 +666,9 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
           <div className="card-soft p-8">
 
-            {error && <div className="badge-danger mb-4">{error}</div>}
-            {success && <div className="badge-success mb-4">{success}</div>}
 
             <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
-              {step === 1 && <OwnerListingFields value={ownerFields} onChange={patch => setOwnerFields(prev => ({ ...prev, ...patch }))} isAdmin={currentUserRole === "admin"} />}
+              {step === 1 && <OwnerListingFields value={ownerFields} onChange={patch => setOwnerFields(prev => ({ ...prev, ...patch }))} isAdmin={currentUserRole === "admin"} declaredOwnerKind={declaredOwnerKind} />}
               {step === 3 && <RentalAvailabilityFields value={{ ...rentalDetails, maintenance_charges: form.maintenance }} onChange={patch => { const { maintenance_charges, ...rest } = patch; setRentalDetails(prev => ({ ...prev, ...rest })); if (maintenance_charges !== undefined) setForm(prev => ({ ...prev, maintenance: String(maintenance_charges ?? "") })); }} isRent={isRentListingType(form.listingType)} />}
 
               {/* STEP 1 */}

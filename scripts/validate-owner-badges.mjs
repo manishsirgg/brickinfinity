@@ -10,6 +10,12 @@ assert.ok(review.ownershipReviewError({code:'42P01',message:'relation "documents
 assert.ok(policy.validateOwnerFields({owner_kind:'agent',owner_attested:true,owner_legal_name:'Agent'}));
 assert.ok(policy.validateOwnerFields({owner_kind:'project_owner_builder',owner_legal_name:'Company',owner_attested:true}));
 assert.equal(policy.validateOwnerFields({owner_kind:'project_owner_builder',owner_legal_name:'Company',owner_project_name:'Owned project',owner_attested:true}),null);
+const validOwner={owner_kind:'owner',owner_legal_name:'Owner',owner_attested:true};
+assert.equal(policy.validateOwnerFields(validOwner,false,'owner'),null);
+assert.ok(policy.validateOwnerFields(validOwner,false,'project_owner_builder').includes('Owner category mismatch'));
+assert.ok(policy.validateOwnerFields(validOwner,false,'project_owner_builder').includes('Project-owning builder'));
+assert.ok(policy.validateOwnerFields(validOwner,false,null).includes('Profile'));
+assert.equal(policy.validateOwnerFields(validOwner,true,'project_owner_builder'),null);
 assert.ok(policy.validateOwnerFields({owner_kind:'owner',owner_legal_name:'Owner',owner_attested:false}));
 const render=property=>renderToStaticMarkup(React.createElement(Badge,{property}));
 const legacy=render({ownership_verified:true});assert.ok(!legacy.includes('Ownership documents reviewed'));assert.ok(legacy.includes('Owner verification pending'));
