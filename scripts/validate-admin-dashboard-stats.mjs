@@ -1,0 +1,21 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const exports={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/admin-dashboard-stats.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports});
+let calls=[];
+const responses=[2,3,7,4,0,10,1].map(count=>({count,error:null}));
+// Each builder is its own thenable; preserve its filter chain for assertions.
+const client={from(table){const index=calls.length,call={table,filters:[]};calls.push(call);const query=new Proxy({}, {get(_,key){if(key==='then')return(resolve,reject)=>Promise.resolve(responses[index]).then(resolve,reject);return(...args)=>{call.filters.push([key,...args]);return query;};}});return query;}};
+const result=await exports.loadAdminDashboardStats(client);
+assert.equal(result.properties,7);assert.equal(result.ready,4);assert.equal(result.ownership,3);
+assert.ok(calls[1].filters.some(f=>f[0]==='eq'&&f[1]==='ownership_review_status'&&f[2]==='unreviewed'));
+assert.ok(calls[1].filters.some(f=>f[0]==='eq'&&f[1]==='documents.status'&&f[2]==='pending'));
+assert.ok(calls[2].filters.every(f=>!['ownership_verified','verification_status'].includes(f[1])));
+assert.ok(calls[3].filters.some(f=>f[0]==='or'&&f[1].includes('listing_source.eq.brickinfinity_admin')));
+responses[1]={count:null,error:{message:'Ambiguous relationship'}};calls=[];
+await assert.rejects(exports.loadAdminDashboardStats(client),/ownership reviews: Ambiguous relationship/);
+responses[1]={count:null,error:null};calls=[];
+await assert.rejects(exports.loadAdminDashboardStats(client),/No count returned for ownership reviews/);
+console.log('Admin counts passed: total pending differs from publication-ready, ownership property filters, staff inclusion and query failures never become zero.');

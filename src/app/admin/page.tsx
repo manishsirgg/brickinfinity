@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+
+import { loadAdminDashboardStats } from "@/lib/admin-dashboard-stats"
 
 const supabase = createClient()
 
@@ -12,6 +14,7 @@ export default function AdminDashboard() {
     kyc: 0,
     ownership: 0,
     properties: 0,
+    ready: 0,
     reports: 0,
     users: 0,
     leads: 0
@@ -19,101 +22,37 @@ export default function AdminDashboard() {
 
   const [loading, setLoading] = useState(true)
 
-  /* ================= FETCH STATS ================= */
-
-  async function fetchStats() {
-
-    setLoading(true)
-
-    const { data } = await supabase.auth.getUser()
-
-    if (!data?.user) {
-      alert("Session expired. Please login again.")
-      setLoading(false)
-      return
-    }
-
+  const [error, setError] = useState("")
+  const requestVersion = useRef(0)
+  const invalidateRequests = useCallback(() => { ++requestVersion.current }, [])
+  const fetchStats = useCallback(async () => {
+    const version = ++requestVersion.current
+    setLoading(true); setError("")
     try {
-
-      const [
-        kycRes,
-        ownershipRes,
-        propertyRes,
-        reportRes,
-        userRes,
-        leadsRes
-      ] = await Promise.all([
-
-        /* ================= KYC ================= */
-
-        supabase
-          .from("documents")
-          .select("*", { count: "exact", head: true })
-          .is("property_id", null)
-          .eq("status", "pending"),
-
-        /* ================= OWNERSHIP ================= */
-
-        supabase
-          .from("documents")
-          .select("id, properties!inner(status,ownership_verified), users!inner(role)", { count: "exact", head: true })
-          .eq("document_type", "ownership")
-          .eq("status", "pending")
-          .eq("properties.status", "pending")
-          .eq("properties.ownership_verified", false)
-          .neq("users.role", "admin"),
-
-        /* ================= READY FOR ACTIVATION ================= */
-
-        supabase
-          .from("properties")
-          .select("id, users:seller_id!inner(role)", { count: "exact", head: true })
-          .eq("status", "pending")
-          .eq("ownership_verified", true)
-          .in("verification_status", ["ownership_approved", "approved"])
-          .neq("users.role", "admin")
-          .is("deleted_at", null),
-
-        /* ================= REPORTS ================= */
-
-        supabase
-          .from("property_reports")
-          .select("*", { count: "exact", head: true }),
-
-        /* ================= USERS ================= */
-
-        supabase
-          .from("users")
-          .select("*", { count: "exact", head: true }),
-
-        /* ================= ADMIN PROPERTY LEADS ================= */
-
-        supabase
-          .from("leads")
-          .select("id, users:seller_id!inner(role)", { count: "exact", head: true })
-          .eq("users.role", "admin")
-
-      ])
-
-      setStats({
-        kyc: kycRes.count || 0,
-        ownership: ownershipRes.count || 0,
-        properties: propertyRes.count || 0,
-        reports: reportRes.count || 0,
-        users: userRes.count || 0,
-        leads: leadsRes.count || 0
-      })
-
-    } catch (err) {
-      console.error("Dashboard stats error:", err)
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data?.user) throw new Error("Session expired. Please sign in again.")
+      const next = await loadAdminDashboardStats(supabase)
+      if (version === requestVersion.current) setStats(next)
+    } catch (error) {
+      if (version === requestVersion.current) setError(error instanceof Error ? error.message : "Could not load dashboard counts.")
+    } finally {
+      if (version === requestVersion.current) setLoading(false)
     }
-
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    fetchStats()
   }, [])
+  useEffect(() => {
+    void fetchStats()
+    const refresh = () => { if (document.visibilityState === "visible") void fetchStats() }
+    window.addEventListener("focus", refresh)
+    window.addEventListener("pageshow", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      invalidateRequests()
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("pageshow", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [fetchStats, invalidateRequests])
+  const count = (value: number) => loading ? "…" : error ? "Unavailable" : value
 
   /* ================= UI ================= */
 
@@ -142,26 +81,30 @@ export default function AdminDashboard() {
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      {error && <p role="alert" className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">{error} Counts are unavailable; use Refresh to retry.</p>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
         <Link href="/admin/kyc" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">KYC Verification</div>
           <div className="text-sm text-gray-500 mt-1">
-            Pending: {stats.kyc}
+            Pending: {count(stats.kyc)}
           </div>
         </Link>
 
         <Link href="/admin/ownership" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Ownership Documents</div>
           <div className="text-sm text-gray-500 mt-1">
-            Pending: {stats.ownership}
+            Pending: {count(stats.ownership)}
           </div>
         </Link>
 
         <Link href="/admin/properties" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Property Listings</div>
           <div className="text-sm text-gray-500 mt-1">
-            Total Pending Review: {stats.properties}
+            Total Pending Review: {count(stats.properties)}
+            <p className="mt-1">Ready for publication: {count(stats.ready)}</p>
+            <p className="mt-1">Ownership reviews are handled in Ownership Documents. Listings without evidence still need the seller to upload it.</p>
           </div>
         </Link>
 
@@ -183,14 +126,14 @@ export default function AdminDashboard() {
         <Link href="/admin/reports" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Reports</div>
           <div className="text-sm text-gray-500 mt-1">
-            Total Reports: {stats.reports}
+            Total Reports: {count(stats.reports)}
           </div>
         </Link>
 
         <Link href="/admin/users" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Users</div>
           <div className="text-sm text-gray-500 mt-1">
-            Total Users: {stats.users}
+            Total Users: {count(stats.users)}
           </div>
         </Link>
 
@@ -211,7 +154,7 @@ export default function AdminDashboard() {
         <Link href="/admin/leads" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">Admin Leads</div>
           <div className="text-sm text-gray-500 mt-1">
-            Total Leads: {stats.leads}
+            Total Leads: {count(stats.leads)}
           </div>
         </Link>
 
