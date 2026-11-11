@@ -1,0 +1,36 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {PGlite} from '@electric-sql/pglite';
+const migration=fs.readFileSync('supabase/migrations/20261111_ownership_document_versions.sql','utf8');
+const db=new PGlite();
+const property='00000000-0000-0000-0000-000000000001',owner='00000000-0000-0000-0000-000000000002';
+for(const column of ['text','document_kind']) for(const rule of ['constraint','index']){
+ await db.exec('DROP TABLE IF EXISTS public.reviews; DROP TABLE IF EXISTS public.documents; DROP TYPE IF EXISTS document_kind;');
+ await db.exec("CREATE TYPE document_kind AS ENUM('ownership','aadhar','selfie')");
+ await db.exec(`CREATE TABLE public.documents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,property_id uuid,document_type ${column},status text,document_url text,reviewed_at timestamptz);CREATE TABLE public.reviews(document_id uuid REFERENCES public.documents(id),document_path text,decision text);`);
+ await db.exec(rule==='constraint' ? 'ALTER TABLE public.documents ADD CONSTRAINT documents_property_type_unique UNIQUE(property_id,document_type)' : 'CREATE UNIQUE INDEX documents_property_type_unique ON public.documents(property_id,document_type)');
+ await db.exec('CREATE UNIQUE INDEX documents_identity_user_type_unique ON public.documents(user_id,document_type) WHERE property_id IS NULL');
+ const old=(await db.query("INSERT INTO public.documents(user_id,property_id,document_type,status,document_url,reviewed_at) VALUES($1,$2,'ownership','rejected','original-proof.pdf','2026-11-11T10:00:00Z') RETURNING *",[owner,property])).rows[0];
+ await db.query("INSERT INTO public.reviews VALUES($1,'original-proof.pdf','rejected')",[old.id]);
+ await assert.rejects(db.query("INSERT INTO public.documents(property_id,document_type,status,document_url) VALUES($1,'ownership','pending','replacement.pdf')",[property]),/documents_property_type_unique/);
+ await db.exec(migration);await db.exec(migration);
+ await db.query("INSERT INTO public.documents(user_id,property_id,document_type,status,document_url) VALUES($1,$2,'ownership','pending','replacement.pdf'),($1,$2,'ownership','pending','supporting-proof.pdf')",[owner,property]);
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM public.documents WHERE property_id=$1',[property])).rows[0].n,3);
+ const retained=(await db.query('SELECT * FROM public.documents WHERE id=$1',[old.id])).rows[0];assert.deepEqual(retained,old);
+ assert.equal((await db.query('SELECT document_path FROM public.reviews WHERE document_id=$1',[old.id])).rows[0].document_path,'original-proof.pdf');
+ await db.query("INSERT INTO public.documents(property_id,document_type) VALUES($1,'aadhar')",[property]);
+ await assert.rejects(db.query("INSERT INTO public.documents(property_id,document_type) VALUES($1,'aadhar')",[property]),/documents_non_ownership_property_type_unique/);
+ await db.query("INSERT INTO public.documents(user_id,document_type) VALUES($1,'selfie')",[owner]);
+ await assert.rejects(db.query("INSERT INTO public.documents(user_id,document_type) VALUES($1,'selfie')",[owner]),/documents_identity_user_type_unique/);
+}
+await db.exec('DROP TABLE public.reviews; DROP TABLE public.documents; CREATE TABLE public.documents(user_id uuid,property_id uuid,document_type text,status text); ALTER TABLE public.documents ADD CONSTRAINT documents_property_type_unique UNIQUE(user_id,document_type)');
+await assert.rejects(db.exec(migration),/Unexpected documents_property_type_unique definition/);
+assert.ok((await db.query("SELECT to_regclass('public.documents_property_type_unique') AS id")).rows[0].id);
+assert.equal((await db.query("SELECT to_regclass('public.documents_non_ownership_property_type_unique') AS id")).rows[0].id,null);
+await db.exec('ALTER TABLE public.documents DROP CONSTRAINT documents_property_type_unique');
+await db.exec(migration);
+await db.exec('ALTER TABLE public.documents ADD CONSTRAINT documents_property_type_unique UNIQUE(property_id,document_type); CREATE INDEX documents_non_ownership_property_type_unique ON public.documents(status)');
+await assert.rejects(db.exec(migration),/Replacement index name already exists/);
+assert.ok((await db.query("SELECT to_regclass('public.documents_property_type_unique') AS id")).rows[0].id);
+await db.close();
+console.log('Ownership version checks passed: original duplicate reproduced, text/enum and constraint/index variants, multiple new files, retained review/file history, non-ownership/identity uniqueness, repeatability and fail-closed definition checks.');

@@ -101,3 +101,11 @@ The submit RPC checks current seller/identity/owner details, ownership of the pr
 Correction requests and evidence remain private to their seller and staff; ordinary API clients cannot modify or delete the history or change submission-control flags directly. Earlier ownership decisions remain in the immutable audit. The migration is repeatable and does not approve, publish or reactivate accounts. Do not reapply superseded older trigger/function definitions after this migration.
 
 Validation: both `node scripts/validate-owner-only.mjs` schema variants exercise structured rejection, private history, notification rollback, draft saves/uploads, required-correction checks, old-file reuse rejection, access checks, duplicate submission and ownership/publication routing. `node scripts/validate-property-review-ui.mjs` verifies instructions, correction categories, escaped text, history and separate save/submit actions.
+
+## Legacy ownership document uniqueness
+
+If an ownership upload fails with `documents_property_type_unique`, apply `supabase/migrations/20261111_ownership_document_versions.sql`. A legacy unique rule on `(property_id, document_type)` permits only one ownership row per property, conflicting with retained evidence versions and supporting files. Schema-context exports may omit this standalone index even though it is active.
+
+The atomic migration checks the exact named legacy constraint/index definition before replacing it with a partial unique index covering non-ownership types only. It supports both an attached unique constraint and a standalone unique index, and text/enum document types. Unexpected definitions, dependencies or replacement-name collisions fail without partial changes. A short lock timeout allows retrying later instead of waiting indefinitely. It is repeatable and leaves installations without the legacy rule unchanged.
+
+No documents, storage files, review records, identity uniqueness rules or security triggers are removed or overwritten. Ownership files keep separate document IDs and the original reviews keep their original evidence references. No approval, publication, account activation or resubmission occurs automatically. After applying it, retry the requested new upload, save the correction and use Resubmit for review. Test with `node scripts/validate-ownership-document-versions.mjs`.

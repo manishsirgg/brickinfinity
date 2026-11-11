@@ -565,7 +565,12 @@ export default function EditPropertyPage() {
         const { error: documentsError } = await supabase
           .from("documents")
           .insert(docsRows);
-        if (documentsError) throw new Error(`Property details were saved, but ownership evidence could not be submitted: ${documentsError.message}`);
+        if (documentsError) {
+          if (documentsError.code === "23505" && documentsError.message.includes("documents_property_type_unique")) {
+            throw new Error("Your property details were saved, but an older database rule blocked the new ownership documents. An admin must apply the ownership document versions migration, then you can retry. Your existing evidence is unchanged.");
+          }
+          throw new Error(`Property details were saved, but ownership evidence could not be submitted: ${documentsError.message}`);
+        }
         // The evidence_resubmitted database trigger invalidates ownership and
         // queues review atomically. Do not issue a second unchecked update.
       }
