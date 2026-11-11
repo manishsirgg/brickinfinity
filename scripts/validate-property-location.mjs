@@ -23,6 +23,7 @@ function load(path) {
   } });
   return exports;
 }
+modules["@/components/property/PropertySortControl"] = { default: () => null };
 modules["@/components/property/PropertySearchFilters"] = { default: () => null };
 modules["@/lib/property-result-options"] = load("src/lib/property-result-options.ts");
 modules["@/lib/property-location"] = load("src/lib/property-location.ts");

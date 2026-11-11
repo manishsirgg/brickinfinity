@@ -1,5 +1,6 @@
+import PropertySortControl from "@/components/property/PropertySortControl";
 import PropertySearchFilters from "@/components/property/PropertySearchFilters";
-import { propertySortOrder, parsePropertySort, SEARCH_AMENITIES, FURNISHING_TYPES, PROPERTY_TYPES, PROPERTY_SORTS } from "@/lib/property-result-options";
+import { propertySortOrder, parsePropertySort, SEARCH_AMENITIES, FURNISHING_TYPES, PROPERTY_TYPES } from "@/lib/property-result-options";
 import { resolvePropertyLocation, propertyResultsPageHref } from "@/lib/property-location";
 import { createServiceClient } from "@/lib/supabase/service";
 import PropertyCard from "@/components/property/PropertyCard";
@@ -324,9 +325,6 @@ export default async function PropertiesSearchPage({
       <header className="space-y-4">
         <div className="space-y-2">
           <h1 className="text-2xl md:text-3xl font-semibold">{pageHeading}</h1>
-          <p className="text-sm text-muted">
-            {totalMatches} verified properties found.
-          </p>
         </div>
 
         {activeSearchChips.length > 0 && (
@@ -343,8 +341,17 @@ export default async function PropertiesSearchPage({
         )}
       </header>
 
-      <PropertySearchFilters key={JSON.stringify(resolvedSearchParams)} states={states || []} cities={cities || []} localities={localities || []} values={{ ...resolvedSearchParams, search: rawSearch, state_id: formStateId, city_id: formCityId, locality_id: location.locality?.id, listing_type: listingType, property_type: propertyType, min_price: resolvedSearchParams.min_price ?? resolvedSearchParams.minPrice, max_price: resolvedSearchParams.max_price ?? resolvedSearchParams.maxPrice, sort }} />
-      <p className="text-sm text-slate-500">Sorted by {PROPERTY_SORTS[sort].toLowerCase()}. Featured listings are labeled; your selected sort order is preserved.</p>
+      <div className="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
+        <aside aria-label="Search filters" className="min-w-0 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:overscroll-contain">
+          <PropertySearchFilters key={JSON.stringify(resolvedSearchParams)} states={states || []} cities={cities || []} localities={localities || []} values={{ ...resolvedSearchParams, search: rawSearch, state_id: formStateId, city_id: formCityId, locality_id: location.locality?.id, listing_type: listingType, property_type: propertyType, min_price: resolvedSearchParams.min_price ?? resolvedSearchParams.minPrice, max_price: resolvedSearchParams.max_price ?? resolvedSearchParams.maxPrice, sort }} />
+        </aside>
+        <section aria-label="Property results" className="min-w-0 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-sm text-muted">{totalMatches} verified properties found.</p>
+            <PropertySortControl key={JSON.stringify(resolvedSearchParams)} values={{ ...resolvedSearchParams, sort }} />
+          </div>
+          <p className="text-xs text-slate-500">Featured listings are labeled; your selected sort order is preserved.</p>
+
       {(filterError || error) && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{filterError || "Properties could not be loaded. Please try again."}</p>}
       {!results.length && !error && !filterError && (
         <div className="text-center py-16 px-6 border rounded-xl bg-white space-y-5">
@@ -378,7 +385,7 @@ export default async function PropertiesSearchPage({
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 xl:gap-6">
         {results.map((property: any) => (
           <PropertyCard key={property.id} property={property} />
         ))}
@@ -390,6 +397,8 @@ export default async function PropertiesSearchPage({
           {currentPage * pageSize < totalMatches && <Link href={propertyResultsPageHref(resolvedSearchParams, currentPage + 1)} className="rounded-lg border px-4 py-2">Next</Link>}
         </nav>
       )}
+        </section>
+      </div>
     </main>
   );
 }
