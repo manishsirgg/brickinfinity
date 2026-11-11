@@ -954,25 +954,43 @@ export default function EditPropertyPage() {
 
         {/* OWNERSHIP */}
 
-        <section>
-          <h3 className="text-lg font-semibold">
+        <section className="space-y-4" aria-labelledby="ownership-documents-heading">
+          <h3 id="ownership-documents-heading" className="text-lg font-semibold">
             Re-Upload Ownership Documents
           </h3>
-
-          <input type="file"
-            multiple
-            accept=".jpg,.jpeg,.png,.webp,.pdf"
-            className="input-premium"
-            onChange={(e)=>
-              handleOwnershipDocsSelect(e.target.files)
-            }
-          />
+          <p className="text-sm text-slate-600">Upload evidence identifying this property and its legal owner. Documents are private and submitted for a new ownership review when you click Save Changes.</p>
+          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 focus-within:ring-2 focus-within:ring-blue-500">
+            <span className="block font-semibold">＋ Add ownership documents</span>
+            <span id="ownership-documents-help" className="block text-sm text-slate-500">PDF, JPG, PNG or WebP · Up to 10 MB each · Select multiple files</span>
+            <input
+              aria-label="Add ownership documents"
+              aria-describedby="ownership-documents-help"
+              type="file"
+              multiple
+              disabled={saving}
+              accept=".jpg,.jpeg,.png,.webp,.pdf"
+              className="mt-3 block w-full min-w-0 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-white disabled:opacity-50"
+              onChange={(e)=>{
+                handleOwnershipDocsSelect(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
           {ownershipDocs.length > 0 && (
-            <ul className="mt-3 space-y-2 text-sm text-gray-600">
-              {ownershipDocs.map((doc, index)=>(
-                <li key={`${doc.name}-${index}`}>• {doc.name}</li>
-              ))}
-            </ul>
+            <div className="space-y-3">
+              <p role="status" className="text-sm text-slate-600">{ownershipDocs.length} {ownershipDocs.length === 1 ? "document" : "documents"} selected · Not saved yet</p>
+              <ul className="space-y-3">
+                {ownershipDocs.map((doc, index)=>(
+                  <li key={`${doc.name}-${index}`} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words font-medium [overflow-wrap:anywhere]">{doc.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{(doc.size / 1024 / 1024).toFixed(1)} MB · Not saved yet</p>
+                    </div>
+                    <button type="button" disabled={saving} aria-label={`Remove selected document ${doc.name}`} onClick={() => setOwnershipDocs(previous => previous.filter((_, i) => i !== index))} className="rounded-lg border px-3 py-2 text-red-700 disabled:opacity-50">Remove</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </section>
 
