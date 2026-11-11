@@ -41,6 +41,28 @@ await db.query("INSERT INTO public.documents(id,user_id,property_id,document_typ
 const checks={identity_matches:true,property_matches:true,owns_property:true,no_agent:true};
 await assert.rejects(db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[ids.evidence,checks,'Checked']),/Admin access/);
 await db.exec('RESET ROLE');
+// Deployed legacy triggers may rely on public tables being in the caller path.
+await db.exec(`CREATE FUNCTION public.legacy_review_side_effect() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN PERFORM count(*) FROM documents WHERE document_type='ownership'; PERFORM count(*) FROM properties; PERFORM count(*) FROM users; RETURN NEW; END $$;
+CREATE TRIGGER legacy_document_review AFTER UPDATE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.legacy_review_side_effect();
+CREATE TRIGGER legacy_property_review AFTER UPDATE ON public.properties FOR EACH ROW EXECUTE FUNCTION public.legacy_review_side_effect();
+CREATE TRIGGER legacy_user_review AFTER UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.legacy_review_side_effect();`);
+await as('admin');
+await assert.rejects(db.query('SELECT public.review_property_ownership($1,false,$2,$3)',[ids.evidence,{},'Ownership details missing']),/relation "documents" does not exist/);
+await db.exec('RESET ROLE');
+assert.equal((await db.query('SELECT status FROM public.documents WHERE id=$1',[ids.evidence])).rows[0].status,'pending');
+assert.equal((await db.query('SELECT count(*)::int AS n FROM public.ownership_reviews')).rows[0].n,0);
+const compatibility=fs.readFileSync('supabase/migrations/20261111_owner_review_trigger_compatibility.sql','utf8');
+await db.exec(compatibility);await db.exec(compatibility);
+await as('owner');await assert.rejects(db.exec('CREATE TABLE public.documents_shadow_test(id int)'),/permission denied/);
+await db.exec('CREATE TEMP TABLE documents(untrusted int)');
+await as('admin');
+await db.exec('BEGIN');
+await db.query('SELECT public.review_property_ownership($1,false,$2,$3)',[ids.evidence,{},'Ownership details missing']);
+assert.equal((await db.query('SELECT status FROM public.documents WHERE id=$1',[ids.evidence])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[ids.property])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT note FROM public.ownership_reviews WHERE document_id=$1',[ids.evidence])).rows[0].note,'Ownership details missing');
+await db.exec('ROLLBACK');await db.exec('RESET ROLE');await db.exec('DROP TABLE pg_temp.documents');
 // Seed previously approved identity evidence, as existing deployments already have KYC records.
 for(const owner of [ids.owner,ids.builder]) for(const type of ['aadhar','selfie']) {await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[owner,type,owner+'/'+type+'/proof']);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[owner+'/'+type+'/proof']);}
 await as('admin');
