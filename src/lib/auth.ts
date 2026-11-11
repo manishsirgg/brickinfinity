@@ -8,6 +8,7 @@ export async function getCurrentUser(): Promise<{
   kycStatus: string;
   sellerStatus: string;
   ownerDeclared: boolean;
+  declarationLocked: boolean;
   fullName: string;
   avatarUrl: string | null;
 } | null> {
@@ -22,7 +23,7 @@ export async function getCurrentUser(): Promise<{
 
   const { data: userRecord } = await supabase
     .from("users")
-    .select("role, kyc_status, seller_status, owner_declaration_at, full_name, avatar_url")
+    .select("role, kyc_status, seller_status, owner_declaration_at, declaration_locked_at, full_name, avatar_url")
     .eq("user_id", sessionUser.id)
     .maybeSingle();
 
@@ -33,6 +34,7 @@ export async function getCurrentUser(): Promise<{
     kycStatus: userRecord?.kyc_status ?? "not_submitted",
     sellerStatus: userRecord?.seller_status ?? "basic",
     ownerDeclared: Boolean(userRecord?.owner_declaration_at),
+    declarationLocked: Boolean(userRecord?.declaration_locked_at),
     fullName: userRecord?.full_name ?? "",
     avatarUrl: userRecord?.avatar_url ?? null,
   };

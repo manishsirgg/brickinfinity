@@ -33,6 +33,8 @@ interface Profile {
   role?: string | null;
   seller_identity?: string | null;
   owner_declaration_at?: string | null;
+  declaration_locked_at?: string | null;
+  seller_legal_name?: string | null;
 }
 
 interface DocumentRow {
@@ -509,7 +511,7 @@ if (existing?.document_url) {
           </Card>
 
           <SellerDashboardAccess
-            profile={{ role: profile?.role, kycStatus: profile?.kyc_status, sellerStatus: profile?.seller_status, ownerDeclared: Boolean(profile?.owner_declaration_at) }}
+            profile={{ role: profile?.role, kycStatus: profile?.kyc_status, sellerStatus: profile?.seller_status, ownerDeclared: Boolean(profile?.owner_declaration_at), declarationLocked: Boolean(profile?.declaration_locked_at) }}
             documents={documents}
             rejectionReason={kycRejectionReason}
             onRefresh={async () => { await fetchProfile(); router.refresh(); }}
@@ -527,7 +529,7 @@ if (existing?.document_url) {
                 <p className="text-sm text-blue-600">Uploading document... Please wait.</p>
               )}
 
-              {profile?.role !== "admin" && <OwnerIdentityDeclaration key={profile?.seller_identity || "new-owner"} initialIdentity={profile?.seller_identity} onSaved={fetchProfile} />}
+              {profile?.role !== "admin" && <OwnerIdentityDeclaration key={profile?.seller_identity || "new-owner"} initialIdentity={profile?.seller_identity} profileId={profile?.id} locked={Boolean(profile?.declaration_locked_at) || profile?.kyc_status === "approved" || profile?.role === "seller"} personalName={profile?.kyc_status === "approved" ? profile.full_name : ""} legalName={profile?.seller_legal_name || (profile?.seller_identity === "owner" && profile?.kyc_status === "approved" ? profile.full_name : "")} onSaved={fetchProfile} />}
               {profile?.owner_declaration_at && <p className="text-sm text-emerald-700">Owner-only declaration recorded. Category: {profile.seller_identity === "project_owner_builder" ? "Project-owning builder" : "Actual owner"}.</p>}
 
 	            <div className="grid sm:grid-cols-2 gap-6">

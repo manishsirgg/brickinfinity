@@ -57,6 +57,8 @@ export default async function AdminLayout({
               Reports
             </Link>
 
+            <Link href="/admin/declaration-changes" className="hover:underline">Declaration changes</Link>
+
             <Link href="/admin/users" className="hover:underline">
               Users
             </Link>

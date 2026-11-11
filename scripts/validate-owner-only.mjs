@@ -144,4 +144,100 @@ for(const type of ['aadhar','selfie']){const path=ids.fresh+'/'+type+'/reviewed'
 await as('fresh');await db.query("SELECT public.declare_owner_identity('owner',true)");
 await db.exec('RESET ROLE');const firstAccess=(await db.query('SELECT role,seller_status FROM public.users WHERE id=$1',[ids.fresh])).rows[0];assert.equal(firstAccess.role,'seller');assert.equal(firstAccess.seller_status,'active');
 console.log('Declaration-access checks passed: reproduced legacy inactive status, checked staff recovery, active owner/builder switches preserve access while pausing listings, demotion cannot self-reactivate, fresh verified onboarding.');
+// Permanent reviewed category changes, after all prior migration regressions.
+await db.exec('RESET ROLE');
+await db.exec('ALTER TABLE storage.buckets ADD COLUMN name text, ADD COLUMN file_size_limit bigint, ADD COLUMN allowed_mime_types text[]');
+const reviewedChanges=fs.readFileSync('supabase/migrations/20261111_reviewed_declaration_changes.sql','utf8');
+await db.exec(`CREATE FUNCTION public.unsafe_profile_default() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.role::text='seller' AND NEW.kyc_status::text='approved' THEN NEW.seller_status:='basic'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER unsafe_profile_default BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.unsafe_profile_default();`);
+await assert.rejects(db.exec(reviewedChanges),/legacy trigger changed account access/);await db.exec('ROLLBACK');
+assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.fresh])).rows[0].seller_status,'active');
+await db.exec('DROP TRIGGER unsafe_profile_default ON public.users;DROP FUNCTION public.unsafe_profile_default()');
+await db.exec(reviewedChanges);await db.exec(reviewedChanges);
+assert.ok((await db.query('SELECT declaration_locked_at FROM public.users WHERE id=$1',[ids.fresh])).rows[0].declaration_locked_at);
+assert.equal((await db.query("SELECT public FROM storage.buckets WHERE id='declaration-documents'")).rows[0].public,false);
+await as('fresh');await assert.rejects(db.query("SELECT public.declare_owner_identity('project_owner_builder',true)"),/locked/);
+await assert.rejects(db.query('UPDATE public.users SET declaration_locked_at=NULL WHERE id=$1',[ids.fresh]),/reviewed declaration/);
+await assert.rejects(db.query("UPDATE public.users SET seller_legal_name='Fake Company' WHERE id=$1",[ids.fresh]),/reviewed declaration/);
+await assert.rejects(db.query('SELECT brick_private.apply_declared_identity($1,$2,$3)',[ids.fresh,'project_owner_builder','Fake']),/permission denied/);
+await db.exec('BEGIN');await db.query("UPDATE public.users SET kyc_status='pending' WHERE id=$1",[ids.fresh]);
+await assert.rejects(db.query("SELECT public.declare_owner_identity('project_owner_builder',true)"),/locked/);await db.exec('ROLLBACK');
+// Unverified applicants still edit freely; the boundary becomes sticky on review.
+await db.exec('RESET ROLE');ids.unverified='00000000-0000-0000-0000-000000000091';await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status) VALUES($1,$1,'buyer','pending','basic')",[ids.unverified]);
+await as('unverified');await db.query("SELECT public.declare_owner_identity('owner',true)");await db.query("SELECT public.declare_owner_identity('project_owner_builder',true)");
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT declaration_locked_at FROM public.users WHERE id=$1',[ids.unverified])).rows[0].declaration_locked_at,null);
+// Establish a genuinely reviewed live property before requesting a new category.
+ids.reviewedProperty='00000000-0000-0000-0000-000000000092';ids.reviewedProof='00000000-0000-0000-0000-000000000093';
+await as('fresh');await db.query("INSERT INTO public.properties(id,seller_id,title,owner_kind,owner_legal_name,owner_attested) VALUES($1,$2,'Reviewed owner property','owner','Verified Owner',true)",[ids.reviewedProperty,ids.fresh]);
+await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[ids.reviewedProperty+'/proof.pdf']);
+await db.query("INSERT INTO public.documents(id,user_id,property_id,document_type,document_url) VALUES($1,$2,$3,'ownership',$4)",[ids.reviewedProof,ids.fresh,ids.reviewedProperty,ids.reviewedProperty+'/proof.pdf']);
+await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[ids.reviewedProof,checks,'Owner proof matched']);await db.query('SELECT public.admin_publish_property($1)',[ids.reviewedProperty]);
+const changeFile=ids.fresh+'/change/proof.pdf';
+await as('fresh');await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('declaration-documents',$1)",[changeFile]);
+async function submitChange(kind='project_owner_builder',paths=[changeFile]){return (await db.query('SELECT public.submit_declaration_change($1,$2,$3,true,$4) AS id',[kind,kind==='owner'?'Verified Owner':'Reviewed Owning Company','The legal ownership capacity has changed.',paths])).rows[0].id;}
+await assert.rejects(submitChange('agent'),/permitted capacity/);
+await assert.rejects(submitChange('project_owner_builder',[]),/Upload 1/);
+await assert.rejects(submitChange('project_owner_builder',[ids.builder+'/other.pdf']),/Upload 1/);
+const request=await submitChange();await assert.rejects(submitChange(),/already pending/);
+assert.equal((await db.query('SELECT seller_identity FROM public.users WHERE id=$1',[ids.fresh])).rows[0].seller_identity,'owner');
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[ids.reviewedProperty])).rows[0].status,'active');
+await assert.rejects(db.query("UPDATE public.declaration_change_requests SET status='approved' WHERE id=$1",[request]),/permission denied/);
+await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[request,{},'Self approval']),/Staff admin/);
+await db.query("DELETE FROM storage.objects WHERE bucket_id='declaration-documents' AND name=$1",[changeFile]);
+await db.exec('RESET ROLE');assert.equal((await db.query("SELECT count(*)::int AS n FROM storage.objects WHERE name=$1",[changeFile])).rows[0].n,1);
+await as('builder');assert.equal((await db.query('SELECT * FROM public.declaration_change_requests WHERE id=$1',[request])).rows.length,0);
+assert.equal((await db.query("SELECT * FROM storage.objects WHERE bucket_id='declaration-documents' AND name=$1",[changeFile])).rows.length,0);
+await assert.rejects(db.query('SELECT public.cancel_declaration_change($1)',[request]),/not found/);
+await as(null);await assert.rejects(db.query('SELECT * FROM public.declaration_change_requests'),/permission denied/);assert.equal((await db.query("SELECT * FROM storage.objects WHERE bucket_id='declaration-documents'")).rows.length,0);
+const capacityChecks={identity_matches:true,capacity_supported:true,no_agent:true};
+await as('admin');await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[request,{},'Incomplete checklist']),/every declaration review/);
+await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[request,capacityChecks,' ']),/review decision and note/);
+await db.query('SELECT public.review_declaration_change($1,false,$2,$3)',[request,{},'Evidence does not establish company ownership.']);
+await as('fresh');assert.equal((await db.query('SELECT seller_identity FROM public.users WHERE id=$1',[ids.fresh])).rows[0].seller_identity,'owner');
+const approvedRequest=await submitChange();
+await as('admin');await db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[approvedRequest,capacityChecks,'Identity and owning company evidence match.']);
+await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[approvedRequest,capacityChecks,'Duplicate decision']),/already been decided/);
+await db.exec('RESET ROLE');const reviewedAccount=(await db.query('SELECT * FROM public.users WHERE id=$1',[ids.fresh])).rows[0];assert.equal(reviewedAccount.seller_identity,'project_owner_builder');assert.equal(reviewedAccount.seller_legal_name,'Reviewed Owning Company');assert.equal(reviewedAccount.role,'seller');assert.equal(reviewedAccount.seller_status,'active');
+const withdrawn=(await db.query('SELECT * FROM public.properties WHERE id=$1',[ids.reviewedProperty])).rows[0];assert.equal(withdrawn.status,'pending');assert.equal(withdrawn.ownership_verified,false);assert.equal(withdrawn.ownership_reviewed_at,null);assert.equal(withdrawn.listing_reviewed_at,null);
+await as('fresh');const cancelled=await submitChange('owner');await db.query('SELECT public.cancel_declaration_change($1)',[cancelled]);
+await as('admin');await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[cancelled,capacityChecks,'Cancelled decision']),/already been decided/);
+// Approval can update capacity for an inactive account, but never restore access.
+await db.query("UPDATE public.users SET role='buyer',seller_status='basic' WHERE id=$1",[ids.fresh]);
+await as('fresh');const inactiveRequest=await submitChange('owner');
+await as('admin');await db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[inactiveRequest,capacityChecks,'Capacity approved; suspension remains.']);
+await db.exec('RESET ROLE');const inactiveAfter=(await db.query('SELECT role,seller_status,seller_identity FROM public.users WHERE id=$1',[ids.fresh])).rows[0];assert.equal(inactiveAfter.role,'buyer');assert.equal(inactiveAfter.seller_status,'basic');assert.equal(inactiveAfter.seller_identity,'owner');
+await as('fresh');await db.query("SELECT public.declare_owner_identity('owner',true)");assert.equal((await db.query('SELECT role FROM public.users WHERE id=$1',[ids.fresh])).rows[0].role,'buyer');
+const revokedRequest=await submitChange();await as('admin');await db.query("UPDATE public.users SET kyc_status='rejected' WHERE id=$1",[ids.fresh]);
+await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[revokedRequest,capacityChecks,'Reject outdated identity']),/Current approved government ID/);
+await db.query('SELECT public.review_declaration_change($1,false,$2,$3)',[revokedRequest,{},'Complete identity re-review first.']);
+// First declaration after identity approval still finishes onboarding, even
+// though the sticky verification boundary was established before declaration.
+await db.exec('RESET ROLE');ids.initial='00000000-0000-0000-0000-000000000094';await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status) VALUES($1,$1,'buyer','approved','basic')",[ids.initial]);
+for(const type of ['aadhar','selfie']){const path=ids.initial+'/'+type+'/reviewed';await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[ids.initial,type,path]);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);}
+await as('initial');await db.query("SELECT public.declare_owner_identity('owner',true)");assert.equal((await db.query('SELECT role,seller_status FROM public.users WHERE id=$1',[ids.initial])).rows[0].seller_status,'active');
+const initialFile=ids.initial+'/change/proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('declaration-documents',$1)",[initialFile]);
+const initialRequest=(await db.query('SELECT public.submit_declaration_change($1,$2,$3,true,$4) AS id',['project_owner_builder','Initial Company','Documented company ownership change.',[initialFile]])).rows[0].id;
+await db.exec('RESET ROLE');await db.exec('BEGIN');await db.query("UPDATE public.users SET role='admin' WHERE id=$1",[ids.initial]);await as('initial');await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[initialRequest,capacityChecks,'Own request']),/own declaration/);await db.exec('ROLLBACK');
+await db.exec('RESET ROLE');await db.exec('BEGIN');await db.query("UPDATE public.users SET seller_identity='project_owner_builder' WHERE id=$1",[ids.initial]);await as('admin');await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[initialRequest,capacityChecks,'Stale request']),/effective declaration has changed/);await db.exec('ROLLBACK');
+await db.exec('RESET ROLE');await db.exec('BEGIN');await db.query("DELETE FROM storage.objects WHERE bucket_id='declaration-documents' AND name=$1",[initialFile]);await as('admin');await assert.rejects(db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[initialRequest,capacityChecks,'Missing file']),/evidence is missing/);await db.exec('ROLLBACK');
+await as('admin');await db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[initialRequest,capacityChecks,'Capacity and current identity files reviewed.']);
+await db.exec('RESET ROLE');assert.equal((await db.query("SELECT jsonb_array_length(review_checks->'identity_evidence') AS n FROM public.declaration_change_requests WHERE id=$1",[initialRequest])).rows[0].n,2);
+// ID files referenced by a declaration decision remain protected after a new
+// upload supersedes the current document row and no ownership review exists.
+await db.query("UPDATE public.documents SET status='pending',document_url=$1 WHERE user_id=$2 AND document_type='aadhar'",[ids.initial+'/aadhar/new',ids.initial]);
+await as('initial');await db.query("DELETE FROM storage.objects WHERE bucket_id='identity-documents' AND name=$1",[ids.initial+'/aadhar/reviewed']);
+await db.exec('RESET ROLE');assert.equal((await db.query("SELECT count(*)::int AS n FROM storage.objects WHERE name=$1",[ids.initial+'/aadhar/reviewed'])).rows[0].n,1);
+// Auth UUID and public profile UUID are different in real deployments.
+const profileUuid='00000000-0000-0000-0000-000000000095',authUuid='00000000-0000-0000-0000-000000000096';
+await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status) VALUES($1,$2,'buyer','approved','basic')",[profileUuid,authUuid]);
+for(const type of ['aadhar','selfie']){const path=authUuid+'/'+type+'/reviewed';await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[profileUuid,type,path]);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);}
+await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[authUuid]);await db.exec('SET ROLE authenticated');await db.query("SELECT public.declare_owner_identity('owner',true)");
+const distinctPath=authUuid+'/change/proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('declaration-documents',$1)",[distinctPath]);
+const distinctRequest=(await db.query('SELECT public.submit_declaration_change($1,$2,$3,true,$4) AS id',['project_owner_builder','Distinct Owning Company','Company ownership capacity evidence.',[distinctPath]])).rows[0].id;
+assert.equal((await db.query('SELECT user_id FROM public.declaration_change_requests WHERE id=$1',[distinctRequest])).rows[0].user_id,profileUuid);
+await as('admin');await db.query('SELECT public.review_declaration_change($1,true,$2,$3)',[distinctRequest,capacityChecks,'Distinct profile/auth identity matched.']);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_identity FROM public.users WHERE id=$1',[profileUuid])).rows[0].seller_identity,'project_owner_builder');
+await db.exec(reviewedChanges);
+assert.equal((await db.query('SELECT count(*)::int AS n FROM public.declaration_change_requests')).rows[0].n,7);
+console.log('Reviewed declaration checks passed: sticky verification lock, free pre-verification edits, one pending request, effective category unchanged pending/rejected/cancelled, private retained evidence, atomic admin approval, property re-review, inactive accounts stay inactive, revoked identity rejected and repeatability.');
 await db.close();console.log('Owner-only database checks passed: protected roles/approvals, no agents/brokerage, owner and builder evidence, atomic reviews, legacy pause, public/private access, material/media re-review and revocation.');

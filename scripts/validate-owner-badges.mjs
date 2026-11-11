@@ -5,6 +5,7 @@ let previousCompany = null;const defaultQueries=[];
 modules['@/lib/supabase/client']={createClient:()=>({from:table=>{const query=new Proxy({},{get(_,key){if(key==='then')return resolve=>resolve({data:previousCompany,error:null});return (...args)=>{defaultQueries.push({table,key,args});return query}}});return query}})};
 const defaults=load('src/lib/owner-listing-defaults.ts');
 const personal=await defaults.loadOwnerListingDefaults({id:'owner',role:'seller',seller_identity:'owner',full_name:'Verified Owner',kyc_status:'approved'});
+const reviewedName=await defaults.loadOwnerListingDefaults({id:'owner',role:'seller',seller_identity:'project_owner_builder',seller_legal_name:'Approved Change Company'});assert.equal(reviewedName.owner_legal_name,'Approved Change Company');
 assert.equal(personal.owner_legal_name,'Verified Owner');assert.equal(personal.owner_kind,'owner');
 const unverified=await defaults.loadOwnerListingDefaults({id:'owner',role:'seller',seller_identity:'owner',full_name:'Unverified',kyc_status:'pending'});assert.equal(unverified.owner_legal_name,'');
 let builderDefaults=await defaults.loadOwnerListingDefaults({id:'builder',role:'seller',seller_identity:'project_owner_builder',full_name:'Personal KYC Name',kyc_status:'approved'});assert.equal(builderDefaults.owner_legal_name,'');
