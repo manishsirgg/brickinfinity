@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { USER_ROLES } from "@/types/roles";
+import { sellerDashboardAccess } from "@/lib/seller-dashboard-access";
 
 export default async function DashboardLayout({
   children,
@@ -16,33 +16,8 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  /* ROLE CHECK */
-
-  const canUseDashboard =
-    user.role === USER_ROLES.SELLER || user.role === USER_ROLES.ADMIN;
-
-  if (!canUseDashboard) {
-    redirect("/profile?upgrade=seller");
-  }
-
-  if (user.role !== USER_ROLES.ADMIN && (!user.ownerDeclared || user.sellerStatus !== "active")) redirect("/profile?upgrade=owner");
-
-  /* KYC STATUS */
-  if (user.role === USER_ROLES.ADMIN) {
-    return <>{children}</>;
-  }
-
-  if (user.kycStatus === "pending") {
-    redirect("/profile?kyc=pending");
-  }
-
-  if (user.kycStatus === "rejected") {
-    redirect("/profile?kyc=rejected");
-  }
-
-  if (user.kycStatus !== "approved") {
-    redirect("/profile?upgrade=kyc");
-  }
+  const access = sellerDashboardAccess(user);
+  if (!access.allowed) redirect(access.href);
 
   return <>{children}</>;
 
