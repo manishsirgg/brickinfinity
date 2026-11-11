@@ -1,5 +1,8 @@
 "use client";
 
+import TextLimitCounter from "@/components/property/TextLimitCounter";
+import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
+
 import { hasPropertyContactDetails, DESCRIPTION_CONTACT_MESSAGE, TITLE_CONTACT_MESSAGE } from "@/lib/property-description-policy";
 
 import MediaFilePreview from "@/components/property/MediaFilePreview";
@@ -332,6 +335,8 @@ export default function EditPropertyPage() {
   async function handleSave(){
 
     if (saving) return;
+    const limitError = validatePropertyTextLimits(property.title, property.description);
+    if (limitError) { setMessage(limitError); return; }
     if (hasPropertyContactDetails(property.title)) { setMessage(TITLE_CONTACT_MESSAGE); return; }
     if (hasPropertyContactDetails(property.description)) { setMessage(DESCRIPTION_CONTACT_MESSAGE); return; }
     setSaving(true);
@@ -568,25 +573,27 @@ export default function EditPropertyPage() {
 
           <input className="input-premium"
             aria-label="Property title"
-            aria-describedby="title-contact-hint"
-            aria-invalid={hasPropertyContactDetails(property.title)}
+            aria-describedby="title-contact-hint title-limit"
+            aria-invalid={hasPropertyContactDetails(property.title) || countTitleCharacters(property.title) > 100}
             value={property.title}
             onChange={(e)=>
               setProperty({...property,title:e.target.value})
             }
           />
 
+          <TextLimitCounter id="title-limit" value={property.title || ""} kind="title" />
           <p id="title-contact-hint" className="text-sm text-slate-600">Keep contact details out of the title. Buyers can use Contact Seller.</p>
 
           <textarea className="textarea-premium"
-            aria-describedby="description-contact-hint"
-            aria-invalid={hasPropertyContactDetails(property.description)}
+            aria-describedby="description-contact-hint description-limit"
+            aria-invalid={hasPropertyContactDetails(property.description) || countDescriptionWords(property.description) > 3000}
             value={property.description}
             onChange={(e)=>
               setProperty({...property,description:e.target.value})
             }
           />
 
+          <TextLimitCounter id="description-limit" value={property.description || ""} kind="description" />
           <p id="description-contact-hint" className="text-sm text-slate-600">Do not include phone numbers, email addresses, websites or social handles. Use the Contact Seller panel.</p>
 
           {isSaleListingType(property.listing_type) ? (
