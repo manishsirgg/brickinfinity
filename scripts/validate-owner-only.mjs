@@ -249,4 +249,9 @@ await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_identity
 await db.exec(reviewedChanges);
 assert.equal((await db.query('SELECT count(*)::int AS n FROM public.declaration_change_requests')).rows[0].n,7);
 console.log('Reviewed declaration checks passed: sticky verification lock, free pre-verification edits, one pending request, effective category unchanged pending/rejected/cancelled, private retained evidence, atomic admin approval, property re-review, inactive accounts stay inactive, revoked identity rejected and repeatability.');
+const diagnosticSql=fs.readFileSync('supabase/diagnostics/ownership-review-reset.sql','utf8').replace('f0aeee08-6dce-44ae-9e3c-f467dc6fb059',ids.reviewedProperty);
+await db.exec('BEGIN READ ONLY');const diagnostic=JSON.parse((await db.query(diagnosticSql)).rows[0].ownership_review_diagnostic);await db.exec('ROLLBACK');
+assert.equal(diagnostic.property.id,ids.reviewedProperty);assert.equal(diagnostic.actual_listing_seller.profile_id,ids.fresh);assert.ok(diagnostic.review_related_triggers.some(t=>t.function==='brick_private.evidence_resubmitted'));assert.ok(diagnostic.installed_review_routines.some(f=>f.function==='public.review_property_ownership'));
+assert.ok(!JSON.stringify(diagnostic).includes('document_path'));assert.ok(!JSON.stringify(diagnostic).includes('document_url'));
+console.log('Ownership-reset diagnostic query passed in a read-only transaction; status/trigger metadata only.');
 await db.close();console.log('Owner-only database checks passed: protected roles/approvals, no agents/brokerage, owner and builder evidence, atomic reviews, legacy pause, public/private access, material/media re-review and revocation.');
