@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import ReviewCorrectionFields from "@/components/admin/ReviewCorrectionFields"
 import { logAction } from "@/lib/moderation/logAction"
 
 const supabase = createClient()
@@ -17,6 +18,10 @@ export default function AdminPropertiesPage() {
   const [loadingQueue, setLoadingQueue] = useState(true)
   const [loadingImages, setLoadingImages] = useState(false)
   const [loadingVideos,setLoadingVideos] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState("")
+  const [correctionScope, setCorrectionScope] = useState("")
+  const [requiredAction, setRequiredAction] = useState("")
+  useEffect(() => { setRejectionReason(""); setCorrectionScope(""); setRequiredAction("") }, [selected?.id])
   const [processing, setProcessing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishMessage, setPublishMessage] = useState<string | null>(null)
@@ -193,46 +198,18 @@ export default function AdminPropertiesPage() {
 
     if (processing) return
 
-    const reason = prompt("Enter rejection reason")
-    if (!reason) return
-
-    setProcessing(true)
-
+    if (!rejectionReason.trim() || !correctionScope || !requiredAction.trim()) {
+      setPublishError("Enter a rejection reason, choose the required corrections and explain what the seller must do.")
+      return
+    }
+    setProcessing(true); setPublishError(null); setPublishMessage(null)
     try {
-
-      const { data: authData } = await supabase.auth.getUser()
-      const adminId = authData.user?.id
-
-      if (!adminId) throw new Error("Session expired")
-
-      const { error } = await supabase
-        .from("properties")
-        .update({
-          status: "rejected",
-          verification_status: "listing_rejected",
-          rejection_reason: reason
-        })
-        .eq("id", property.id)
-
-      if (error) throw error
-
-      await supabase
-        .from("notifications")
-        .insert({
-          user_id: property.seller_id,
-          title: "Property Rejected",
-          message: reason,
-          type: "property"
-        })
-
-      await logAction(
-        adminId,
-        "property",
-        property.id,
-        "reject_property",
-        reason
-      )
-
+      const { data, error } = await supabase.rpc("reject_property_review", {
+        p_property_id: property.id, p_stage: "listing", p_reason: rejectionReason.trim(),
+        p_scope: correctionScope, p_required_action: requiredAction.trim()
+      })
+      if (error || !data) throw new Error(error?.message || "Rejection was not confirmed.")
+      setPublishMessage("Listing rejected. The seller was notified of the reason and required corrections.")
       setSelected(null)
       setImages([])
       setVideos([])
@@ -242,7 +219,7 @@ export default function AdminPropertiesPage() {
     } catch (err: any) {
 
       console.error("Reject error >>>", err)
-      alert(err.message || "Reject failed")
+      setPublishError(err.message || "Reject failed")
 
     }
 
@@ -402,6 +379,12 @@ export default function AdminPropertiesPage() {
 
               </div>
 
+              <div className="space-y-3">
+                <label className="block text-sm">Rejection reason (required when rejecting)
+                  <textarea value={rejectionReason} maxLength={2000} onChange={event => setRejectionReason(event.target.value)} className="mt-1 w-full rounded border p-2" />
+                </label>
+                <ReviewCorrectionFields scope={correctionScope} onScopeChange={setCorrectionScope} action={requiredAction} onActionChange={setRequiredAction} />
+              </div>
               <div className="flex gap-4 flex-wrap">
                 <Link
                   href={`/dashboard/edit/${selected.id}`}

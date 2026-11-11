@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link";
 import { useFormFeedback } from "@/lib/use-form-feedback";
 import { isPendingOwnershipReview, pendingOwnershipQueue, ownershipDecisionConfirmed } from "@/lib/ownership-queue";
+import ReviewCorrectionFields from "@/components/admin/ReviewCorrectionFields";
 import ReviewEvidenceLinks from "@/components/admin/ReviewEvidenceLinks";
 import { ownershipReviewBlockers, ownershipReviewError } from "@/lib/ownership-review";
 import { createClient } from "@/lib/supabase/client"
@@ -26,12 +27,14 @@ export default function OwnershipVerificationPage(){
   const [loadingDoc,setLoadingDoc] = useState(false)
   const [reviewChecks,setReviewChecks] = useState<Record<string,boolean>>({});
   const [reviewNote,setReviewNote] = useState("");
+  const [correctionScope, setCorrectionScope] = useState("");
+  const [requiredAction, setRequiredAction] = useState("");
   const { feedback, feedbackRef, showFeedback } = useFormFeedback();
   const [queueError, setQueueError] = useState("");
   const queueVersion = useRef(0);
   const invalidateQueueRequests = useCallback(() => { ++queueVersion.current; }, []);
   const reviewInFlight = useRef(false);
-  useEffect(() => { setReviewChecks({}); setReviewNote(""); }, [selected?.id]);
+  useEffect(() => { setReviewChecks({}); setReviewNote(""); setCorrectionScope(""); setRequiredAction(""); }, [selected?.id]);
   const [processing,setProcessing] = useState(false)
 
   /* ================= FETCH QUEUE ================= */
@@ -105,6 +108,7 @@ export default function OwnershipVerificationPage(){
   async function review(doc: any, approve: boolean) {
     if (reviewInFlight.current) return;
     if (!reviewNote.trim()) { showFeedback("Enter a review note or rejection reason before submitting."); return; }
+    if (!approve && (!correctionScope || !requiredAction.trim())) { showFeedback("Choose the required corrections and explain what the seller must do."); return; }
     if (approve && approvalBlockers.length) { showFeedback(approvalBlockers.join(" ")); return; }
     showFeedback("");
     reviewInFlight.current = true; ++queueVersion.current; setProcessing(true);
@@ -118,14 +122,16 @@ export default function OwnershipVerificationPage(){
         showFeedback("This property is no longer awaiting ownership review. The pending queue has been refreshed.", "success");
         await fetchQueue(); return;
       }
-      const { error } = await supabase.rpc("review_property_ownership", { p_document_id: doc.id, p_approve: approve, p_checks: reviewChecks, p_note: reviewNote.trim() });
+      const { error } = approve
+        ? await supabase.rpc("review_property_ownership", { p_document_id: doc.id, p_approve: true, p_checks: reviewChecks, p_note: reviewNote.trim() })
+        : await supabase.rpc("reject_property_review", { p_property_id: doc.property_id, p_stage: "ownership", p_document_id: doc.id, p_reason: reviewNote.trim(), p_scope: correctionScope, p_required_action: requiredAction.trim() });
       if (error) { showFeedback(ownershipReviewError(error)); return; }
       const { data: saved, error: savedError } = await supabase.from("documents").select(OWNERSHIP_SELECTION).eq("id", doc.id).single();
       if (savedError || !saved) throw new Error("The review request completed, but the saved decision could not be confirmed. Refresh the pending queue before retrying. Your note is retained.");
       if (!ownershipDecisionConfirmed(saved as any, approve)) throw new Error("The saved ownership decision does not match the requested decision. A resubmission or database trigger may have reset it. Refresh the queue and inspect the saved document/property status. Your note is retained.");
       setQueue(previous => previous.filter(item => item.property_id !== doc.property_id));
       setSelected(null); setFileUrl(null);
-      showFeedback(approve ? "Ownership approved and removed from pending reviews. Publication is a separate step in Admin → Listings." : "Ownership rejected and removed from pending reviews. It returns only when ownership is submitted for review again.", "success");
+      showFeedback(approve ? "Ownership approved and removed from pending reviews. Publication is a separate step in Admin → Listings." : "Ownership rejected. The seller has been notified of the reason and required corrections and must explicitly resubmit after saving.", "success");
       await fetchQueue();
     } catch (error) { showFeedback(ownershipReviewError(error instanceof Error ? error : {})); }
     finally { reviewInFlight.current = false; setProcessing(false); setLoadingQueue(false); }
@@ -272,8 +278,9 @@ export default function OwnershipVerificationPage(){
                 <p>Legal owner: {selected.properties?.owner_legal_name || "Not provided — owner must update listing"}</p>
                 <p>Category: {selected.properties?.owner_kind || "Not declared"} · Project: {selected.properties?.owner_project_name || "—"}</p>
                 {Object.entries({ identity_matches:"The identity evidence matches the legal owner / owning company", property_matches:"The evidence identifies this exact property or project", owns_property:"The applicant / builder company actually owns the property", no_agent:"This is not an agent, broker, contractor or marketing-intermediary listing", ...(selected.properties?.owner_kind === "project_owner_builder" ? { company_owns_project:"Company and project ownership evidence reviewed" } : {}) }).map(([key,label]) => <label key={key} className="flex gap-2 text-sm"><input type="checkbox" checked={!!reviewChecks[key]} onChange={e=>setReviewChecks(prev=>({...prev,[key]:e.target.checked}))}/>{label}</label>)}
-                <label className="block text-sm">Review note / rejection reason (required)<textarea required className="mt-1 w-full rounded border p-2" value={reviewNote} onChange={e=>setReviewNote(e.target.value)}/></label>
-                <p className="text-sm text-slate-600">You can reject with a reason even when seller details or checklist items are incomplete.</p>
+                <ReviewCorrectionFields scope={correctionScope} onScopeChange={setCorrectionScope} action={requiredAction} onActionChange={setRequiredAction} />
+                <label className="block text-sm">Review note / rejection reason (required)<textarea required maxLength={2000} className="mt-1 w-full rounded border p-2" value={reviewNote} onChange={e=>setReviewNote(e.target.value)}/></label>
+                <p className="text-sm text-slate-600">You can reject incomplete submissions. A reason, correction category and required seller action are mandatory.</p>
               </div>
               {approvalBlockers.length > 0 && <div id="ownership-approval-requirements" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Before you can approve ownership:</p><ul className="mt-2 list-disc space-y-1 pl-5">{approvalBlockers.map(reason=><li key={reason}>{reason}</li>)}</ul></div>}
               <div className="flex gap-4">
