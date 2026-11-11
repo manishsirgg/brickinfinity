@@ -1,7 +1,8 @@
+import PropertySearchFilters from "@/components/property/PropertySearchFilters";
+import { propertySortOrder, parsePropertySort, SEARCH_AMENITIES, FURNISHING_TYPES, PROPERTY_TYPES, PROPERTY_SORTS } from "@/lib/property-result-options";
 import { resolvePropertyLocation, propertyResultsPageHref } from "@/lib/property-location";
 import { createServiceClient } from "@/lib/supabase/service";
 import PropertyCard from "@/components/property/PropertyCard";
-import { sortFeaturedPropertiesFirst } from "@/lib/property-featured";
 import {
   buildLocationNameOr,
   buildPropertyKeywordOr,
@@ -41,6 +42,13 @@ const noResultSuggestions = [
 
 type PropertiesSearchParams = {
   search?: string;
+  keyword?: string;
+  sort?: string;
+  min_area?: string;
+  max_area?: string;
+  bathrooms?: string;
+  furnishing?: string;
+  amenities?: string;
   propertyType?: string;
   property_type?: string;
   listingType?: string;
@@ -60,7 +68,7 @@ type PropertiesSearchParams = {
 };
 
 type Props = {
-  searchParams?: PropertiesSearchParams | Promise<PropertiesSearchParams>;
+  searchParams?: Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>;
 };
 
 function cleanString(value?: string) {
@@ -135,8 +143,17 @@ export default async function PropertiesSearchPage({
   searchParams = {},
 }: Props) {
   const supabase = createServiceClient();
-  const resolvedSearchParams = await searchParams;
-  const rawSearch = cleanString(resolvedSearchParams.search);
+  const incoming = await searchParams;
+  const resolvedSearchParams = Object.fromEntries(Object.entries(incoming).map(([key, value]) => [key, Array.isArray(value) ? key === "amenities" ? value.join(",") : value[0] : value])) as PropertiesSearchParams;
+  let filterError = "";
+  const readNumber = (key: keyof PropertiesSearchParams) => {
+    const raw = cleanString(resolvedSearchParams[key]);
+    if (!raw) return undefined;
+    const number = Number(raw);
+    if (!Number.isFinite(number) || number < 0) { filterError = "Enter valid non-negative numbers for price, area and room filters."; return undefined; }
+    return number;
+  };
+  const rawSearch = cleanString(resolvedSearchParams.search || resolvedSearchParams.keyword);
   const keyword = sanitizeSearchTerm(rawSearch);
   const normalizedSearch = normalizeSearchTerm(keyword || "");
   const propertyType = cleanString(
@@ -168,19 +185,41 @@ export default async function PropertiesSearchPage({
     state_id: cleanString(resolvedSearchParams.state_id),
     city_id: cleanString(resolvedSearchParams.city_id),
     locality_id: cleanString(resolvedSearchParams.locality_id),
-  });
+  }).catch(() => { filterError = "The selected location could not be loaded. Please choose it again."; return { state: null, city: null, locality: null, notFound: true }; });
   const locationLabel = location.locality?.name || location.city?.name || location.state?.name;
   const bedrooms = cleanString(resolvedSearchParams.bedrooms);
-  const minPrice = Number(
-    cleanString(
-      resolvedSearchParams.min_price ?? resolvedSearchParams.minPrice,
-    ),
-  );
-  const maxPrice = Number(
-    cleanString(
-      resolvedSearchParams.max_price ?? resolvedSearchParams.maxPrice,
-    ),
-  );
+  const minPrice = readNumber(resolvedSearchParams.min_price !== undefined ? "min_price" : "minPrice");
+  const maxPrice = readNumber(resolvedSearchParams.max_price !== undefined ? "max_price" : "maxPrice");
+  const minArea = readNumber("min_area");
+  const maxArea = readNumber("max_area");
+  const bathrooms = readNumber("bathrooms");
+  const bedroomCount = readNumber("bedrooms");
+  const furnishing = cleanString(resolvedSearchParams.furnishing);
+  const amenities = [...new Set((resolvedSearchParams.amenities || "").split(",").map(value => value.trim()).filter(Boolean))];
+  if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) filterError = "Minimum price cannot exceed maximum price.";
+  if (minArea !== undefined && maxArea !== undefined && minArea > maxArea) filterError = "Minimum area cannot exceed maximum area.";
+  if (propertyType && !PROPERTY_TYPES.includes(propertyType)) filterError = "Choose a valid property type.";
+  if (listingType && !["Sale", "Rent"].includes(listingType)) filterError = "Choose Sale or Rent.";
+  if (furnishing && !FURNISHING_TYPES.includes(furnishing)) filterError = "Choose a valid furnishing option.";
+  if (amenities.some(amenity => !SEARCH_AMENITIES.includes(amenity))) filterError = "Choose valid amenities.";
+  if ([bedroomCount, bathrooms].some(value => value !== undefined && (!Number.isInteger(value) || value < 1 || value > 5))) filterError = "Choose a room count from 1 to 5.";
+  const sort = parsePropertySort(resolvedSearchParams.sort);
+  const sortOrder = propertySortOrder(sort);
+  let formCityId = location.city?.id || "";
+  if (!formCityId && location.locality) {
+    const { data } = await supabase.from("localities").select("city_id").eq("id", location.locality.id).maybeSingle();
+    formCityId = data?.city_id || "";
+  }
+  let formStateId = location.state?.id || "";
+  if (!formStateId && formCityId) {
+    const { data } = await supabase.from("cities").select("state_id").eq("id", formCityId).maybeSingle();
+    formStateId = data?.state_id || "";
+  }
+  const [{ data: states }, { data: cities }, { data: localities }] = await Promise.all([
+    supabase.from("states").select("id,name").order("name"),
+    formStateId ? supabase.from("cities").select("id,name").eq("state_id", formStateId).order("name") : Promise.resolve({ data: [] }),
+    formCityId ? supabase.from("localities").select("id,name").eq("city_id", formCityId).order("name") : Promise.resolve({ data: [] }),
+  ]);
   const propertyTypeDisplayName = getPropertyTypeDisplayName(propertyType);
   const requestedPage = Number(resolvedSearchParams.page || "1");
   const currentPage = Number.isFinite(requestedPage) ? Math.max(1, Math.floor(requestedPage)) : 1;
@@ -201,12 +240,15 @@ export default async function PropertiesSearchPage({
     query = query.eq("listing_type", listingType);
 
   if (propertyType) query = query.eq("property_type", propertyType);
-  if (bedrooms && Number.isFinite(Number(bedrooms)))
-    query = query.eq("bedrooms", Number(bedrooms));
-  if (Number.isFinite(minPrice) && minPrice > 0)
-    query = query.gte("price", minPrice);
-  if (Number.isFinite(maxPrice) && maxPrice > 0)
-    query = query.lte("price", maxPrice);
+  if (bedroomCount !== undefined) query = query.eq("bedrooms", bedroomCount);
+  if (bathrooms !== undefined) query = query.eq("bathrooms", bathrooms);
+  if (minPrice !== undefined) query = query.gte("price", minPrice);
+  if (maxPrice !== undefined) query = query.lte("price", maxPrice);
+  if (minArea !== undefined) query = query.gte("built_up_area", minArea);
+  if (maxArea !== undefined) query = query.lte("built_up_area", maxArea);
+  if (furnishing) query = query.eq("furnishing_status", furnishing);
+  if (amenities.length) query = query.contains("amenities", amenities);
+  if (filterError) query = query.in("id", []);
   if (location.notFound) query = query.in("id", []);
   if (location.state) query = query.eq("cities.state_id", location.state.id);
   if (location.city) query = query.eq("city_id", location.city.id);
@@ -226,8 +268,8 @@ export default async function PropertiesSearchPage({
           city: city ?? null,
           state: state ?? null,
           bedrooms: bedrooms ?? null,
-          minPrice: Number.isFinite(minPrice) && minPrice > 0 ? minPrice : null,
-          maxPrice: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : null,
+          minPrice: minPrice ?? null,
+          maxPrice: maxPrice ?? null,
         },
         keywordLocationIds,
         keywordOr,
@@ -238,26 +280,29 @@ export default async function PropertiesSearchPage({
   }
 
   const { data, count, error } = await query
-    .order("is_featured", { ascending: false })
-    .order("featured_rank", { ascending: false })
-    .order("featured_until", { ascending: false })
-    .order("views_count", { ascending: false })
-    .order("created_at", { ascending: false })
+    .order(sortOrder.column, { ascending: sortOrder.ascending, nullsFirst: false })
+    .order("id", { ascending: true })
     .range(from, to);
 
   if (error) {
     console.error("Properties search query error:", error);
   }
 
-  const results = data ? sortFeaturedPropertiesFirst(data) : [];
+  const results = data || [];
   const totalMatches = count ?? results.length;
-  const showNoResultSuggestions = !error && totalMatches === 0;
+  const showNoResultSuggestions = !error && !filterError && totalMatches === 0;
   const pageHeading = keyword
     ? `Search results for “${keyword}”`
     : propertyTypeDisplayName
       ? `${propertyTypeDisplayName} Properties`
-      : locationLabel ? `Properties in ${locationLabel}` : "Property Results";
+      : locationLabel ? `Properties in ${locationLabel}` : listingType === "Sale" ? "Properties for sale" : listingType === "Rent" ? "Properties for rent" : "Property Results";
   const activeSearchChips = [
+    minPrice !== undefined || maxPrice !== undefined ? { label: "Price", value: `₹${minPrice ?? 0} – ${maxPrice !== undefined ? `₹${maxPrice}` : "Any"}` } : null,
+    minArea !== undefined || maxArea !== undefined ? { label: "Built-up area", value: `${minArea ?? 0} – ${maxArea ?? "Any"} sq ft` } : null,
+    bedroomCount ? { label: "Bedrooms", value: String(bedroomCount) } : null,
+    bathrooms ? { label: "Bathrooms", value: String(bathrooms) } : null,
+    furnishing ? { label: "Furnishing", value: furnishing } : null,
+    ...amenities.map(value => ({ label: "Amenity", value })),
     location.state ? { label: "State", value: location.state.name } : null,
     location.city ? { label: "City", value: location.city.name } : null,
     location.locality ? { label: "Locality", value: location.locality.name } : null,
@@ -298,7 +343,10 @@ export default async function PropertiesSearchPage({
         )}
       </header>
 
-      {!results.length && (
+      <PropertySearchFilters key={JSON.stringify(resolvedSearchParams)} states={states || []} cities={cities || []} localities={localities || []} values={{ ...resolvedSearchParams, search: rawSearch, state_id: formStateId, city_id: formCityId, locality_id: location.locality?.id, listing_type: listingType, property_type: propertyType, min_price: resolvedSearchParams.min_price ?? resolvedSearchParams.minPrice, max_price: resolvedSearchParams.max_price ?? resolvedSearchParams.maxPrice, sort }} />
+      <p className="text-sm text-slate-500">Sorted by {PROPERTY_SORTS[sort].toLowerCase()}. Featured listings are labeled; your selected sort order is preserved.</p>
+      {(filterError || error) && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{filterError || "Properties could not be loaded. Please try again."}</p>}
+      {!results.length && !error && !filterError && (
         <div className="text-center py-16 px-6 border rounded-xl bg-white space-y-5">
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-gray-900">
