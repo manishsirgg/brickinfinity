@@ -23,7 +23,7 @@ CREATE POLICY old_users ON public.users FOR ALL TO authenticated USING(true) WIT
 const testSchema=process.argv.includes('--text-schema') ? setupSchema
   .replace('role role_type','role varchar').replace('kyc_status kyc_type','kyc_status varchar')
   .replace('seller_status seller_type','seller_status varchar').replace('status prop_status','status varchar')
-  .replace('verification_status verification_type','verification_status varchar').replace('status doc_status','status varchar') : setupSchema;
+  .replace('verification_status verification_type','verification_status varchar(20)').replace('status doc_status','status varchar') : setupSchema;
 await db.exec(testSchema);
 for(const [key,id] of Object.entries(ids).filter(([k])=>['admin','owner','other','builder','buyer'].includes(k))) await db.query("INSERT INTO public.users(id,user_id,full_name,role,kyc_status,seller_status) VALUES($1,$1,$2,$3,'approved','active')",[id,key,key==='admin'?'admin':key==='buyer'?'buyer':'seller']);
 await db.query("INSERT INTO public.properties(id,seller_id,title,status,verification_status,ownership_verified) VALUES($1,$2,'Legacy','active','approved',true),($3,$4,'Admin legacy','active','approved',true)",[ids.legacy,ids.owner,ids.staffListing,ids.admin]);
@@ -81,8 +81,28 @@ await as('other');assert.equal((await db.query('SELECT * FROM public.documents W
 await as('owner');await assert.rejects(db.query('DELETE FROM public.documents WHERE id=$1',[ids.evidence]),/retained/);
 await db.query('DELETE FROM storage.objects WHERE name=$1',[ids.property+'/proof.pdf']); // Restrictive policy must leave the object intact.
 await db.exec('RESET ROLE');assert.equal((await db.query('SELECT * FROM storage.objects WHERE name=$1',[ids.property+'/proof.pdf'])).rows.length,1);
-await as('owner');await db.query("UPDATE public.properties SET title='Material edit' WHERE id=$1",[ids.property]);
-await db.exec('RESET ROLE');let row=(await db.query('SELECT * FROM public.properties WHERE id=$1',[ids.property])).rows[0];assert.equal(row.status,'pending');assert.equal(row.listing_reviewed_at,null);assert.equal(row.ownership_verified,true);
+// The browser must submit editable content only, not stale/oversized review states.
+const editPage=fs.readFileSync('src/app/(dashboard)/dashboard/edit/[id]/page.tsx','utf8');
+const editPayload=editPage.slice(editPage.indexOf('.from("properties")\n        .update({'),editPage.indexOf('if (propertyError)'));
+assert.ok(editPayload.includes('title:property.title'));
+assert.ok(!/\b(?:status|verification_status)\s*:/.test(editPayload));
+await as('owner');
+if(process.argv.includes('--text-schema')){
+ await assert.rejects(db.query("UPDATE public.properties SET title='Material edit',verification_status='edited_requires_review' WHERE id=$1",[ids.property]),/value too long for type character varying\(20\)/);
+ assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[ids.property])).rows[0].status,'active');
+}
+await db.query("UPDATE public.properties SET title='Material edit' WHERE id=$1",[ids.property]);
+await db.exec('RESET ROLE');let row=(await db.query('SELECT * FROM public.properties WHERE id=$1',[ids.property])).rows[0];assert.equal(row.status,'pending');assert.equal(row.listing_reviewed_at,null);assert.equal(row.ownership_verified,true);assert.equal(row.verification_status,'ownership_approved');
+// Old approved/rejected listings also re-enter review without client-written states.
+for(const oldStatus of ['approved','rejected']){
+ await db.exec('RESET ROLE');await db.exec('BEGIN');
+ await db.query('UPDATE public.properties SET status=$1 WHERE id=$2',[oldStatus,ids.property]);
+ await as('owner');await db.query("UPDATE public.properties SET title='Revised listing content' WHERE id=$1",[ids.property]);
+ const saved=(await db.query('SELECT status,verification_status FROM public.properties WHERE id=$1',[ids.property])).rows[0];
+ assert.equal(saved.status,'pending');assert.equal(saved.verification_status,'ownership_approved');
+ await db.exec('RESET ROLE');await db.exec('ROLLBACK');
+}
+
 await as('admin');await db.query('SELECT public.admin_publish_property($1)',[ids.property]);
 await as('owner');await db.query("INSERT INTO public.property_images(property_id,image_url) VALUES($1,'/new-photo.jpg')",[ids.property]);
 await db.exec('RESET ROLE');assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[ids.property])).rows[0].status,'pending');

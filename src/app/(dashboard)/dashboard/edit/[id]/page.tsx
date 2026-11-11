@@ -386,10 +386,6 @@ export default function EditPropertyPage() {
       const localityId = await ensureLocality();
       const seoFields = buildPropertySeoFields(property.title, property.description);
 
-      const shouldMoveToPending =
-        property.status==="approved" ||
-        property.status==="rejected";
-
       const preferredTenant =
         isRentListingType(property.listing_type)
         ? property.preferred_tenant || null
@@ -458,10 +454,9 @@ export default function EditPropertyPage() {
           hourly_rate: isRentListing ? hourlyRate : null,
           daily_rate: isRentListing ? dailyRate : null,
           monthly_rate: isRentListing ? monthlyRate : null,
-          status:shouldMoveToPending ? "pending" : property.status,
-          verification_status:shouldMoveToPending
-            ? "edited_requires_review"
-            : property.verification_status,
+          // The database derives review states from the actual changes. Sending
+          // cached states can overwrite a newer review, and the obsolete
+          // edited_requires_review value exceeds legacy varchar(20) columns.
           updated_at:new Date().toISOString()
         })
         .eq("id",propertyId).select("id").single();
