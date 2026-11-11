@@ -11,7 +11,8 @@ import FeaturedListingModal from "@/components/property-featured/FeaturedListing
 import { createClient } from "@/lib/supabase/client";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { dashboardPropertyLink } from "@/lib/dashboard-property-link";
 import { isFeaturePromotableStatus } from "@/lib/property-featured/status";
 import DashboardPageHeader from "@/components/ui/DashboardPageHeader";
 
@@ -21,7 +22,6 @@ const PAGE_SIZE = 9;
 
 export default function MyListingsPage() {
 
-  const router = useRouter();
 
   const [loading,setLoading] = useState(true);
   type ListingProperty = VerificationFields & {
@@ -31,6 +31,7 @@ export default function MyListingsPage() {
   listing_type: string;
   price: number;
   status: string;
+  verification_status: string | null;
   rejection_reason: string | null;
   is_featured: boolean | null;
   featured_started_at: string | null;
@@ -108,6 +109,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
             listing_type,
             price,
             status,
+            verification_status,
             rejection_reason,
             is_featured,
             featured_started_at,
@@ -354,31 +356,31 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
           const image =
             getCoverImage(property.property_images);
 
-          const propertyUrl =
-            `/property/${property.id}/${property.slug}`;
+          const destination = dashboardPropertyLink(property);
 
           return(
 
             <Card
   key={property.id}
-  className="overflow-hidden hover:shadow-lg transition cursor-pointer"
+  className="overflow-hidden hover:shadow-lg transition"
 >
 
-<div
-  onClick={()=>router.push(`/property/${property.id}/${property.slug}`)}
->
+<div>
+              <Link href={destination.href} aria-label={`${destination.label}: ${property.property_type} (${property.listing_type})`}>
 
               <img
                 src={image}
                 className="aspect-square w-full object-cover"
                 alt="Property"
               />
+              </Link>
 
               <div className="p-5 space-y-3">
 
                 <p className="font-semibold">
-                  {property.property_type} ({property.listing_type})
+                  <Link href={destination.href}>{property.property_type} ({property.listing_type})</Link>
                 </p>
+                {!destination.published && <p className="text-xs text-muted">This listing is not public yet. Open Review listing to check or update its details.</p>}
 
                 <p className="text-primary font-semibold">
                   ₹ {new Intl.NumberFormat("en-IN")
@@ -450,9 +452,9 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
 
                   <Button
                     variant="secondary"
-                    href={propertyUrl}
+                    href={destination.href}
                   >
-                    View
+                    {destination.label}
                   </Button>
 
                   <Button
