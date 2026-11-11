@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import SellerDashboardAccess from "@/components/SellerDashboardAccess";
 import OwnerIdentityDeclaration from "@/components/OwnerIdentityDeclaration";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -45,8 +46,7 @@ interface DocumentRow {
 /* ================= PAGE ================= */
 
 export default function ProfilePage() {
-  const searchParams = useSearchParams();
-  const upgradeType = searchParams.get("upgrade");
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,7 +64,6 @@ export default function ProfilePage() {
     driving_license: null,
     selfie: null,
   });
-  const [documentsList, setDocumentsList] = useState<DocumentRow[]>([]);
   const [newPassword, setNewPassword] = useState("");
   const [newEmail, setNewEmail] = useState("");
 
@@ -158,8 +157,10 @@ export default function ProfilePage() {
   const { data: docs } = await supabase
     .from("documents")
     .select("id, document_type, document_url, status, rejection_reason")
-    .eq("user_id", data.id);
-    setDocumentsList(docs || []);
+    .eq("user_id", data.id)
+    .is("property_id", null)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
     const rejectionDoc = (docs || []).find((doc: any) => doc.status === "rejected" && doc.rejection_reason);
     setKycRejectionReason(rejectionDoc?.rejection_reason || null);
 
@@ -171,7 +172,7 @@ export default function ProfilePage() {
   };
 
   docs?.forEach((d: any) => {
-    if (d.document_type && d.document_type in map) {
+    if (d.document_type && d.document_type in map && !map[d.document_type as DocumentType]) {
       map[d.document_type as DocumentType] = d;
     }
   });
@@ -385,23 +386,6 @@ if (existing?.document_url) {
   setUploadingKyc(false);
 }
 
-const hasGovtId = documentsList.some(
-  (d) =>
-    d.document_type === "aadhar" ||
-    d.document_type === "passport" ||
-    d.document_type === "driving_license"
-);
-
-const hasSelfie = documentsList.some(
-  (d) => d.document_type === "selfie"
-);
-
-const kycComplete = hasGovtId && hasSelfie;
-const approvalTarget =
-  profile?.role === "admin" || profile?.seller_status === "admin_review_required"
-    ? "admin"
-    : "seller";
-
   if (loading)
     return (
       <div className="container-custom py-20 text-center">
@@ -518,63 +502,18 @@ const approvalTarget =
 
             </div>
 
-            <Button onClick={handleSaveProfile}>
+            <Button onClick={handleSaveProfile} disabled={saving}>
               Save Changes
             </Button>
 
           </Card>
 
-          <Card className="p-6 space-y-3 border-2 border-dashed">
-            <h2 className="text-lg font-semibold">
-              Application Status
-            </h2>
-
-            {profile?.kyc_status === "pending" && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                Your documents have been uploaded and are awaiting admin approval.
-              </p>
-            )}
-
-            {profile?.kyc_status === "approved" && approvalTarget === "seller" && (
-              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-                Your seller application has been approved. You can now list properties.
-              </p>
-            )}
-
-            {profile?.kyc_status === "approved" && approvalTarget === "admin" && (
-              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-                Your staff admin access is active.
-              </p>
-            )}
-
-            {profile?.kyc_status === "rejected" && (
-              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
-                <p>Your application has been rejected.</p>
-                <p>
-                  <span className="font-semibold">Reason for rejection:</span>{" "}
-                  {kycRejectionReason || "No reason provided yet. Please contact support."}
-                </p>
-              </div>
-            )}
-
-            {profile?.kyc_status !== "pending" &&
-              profile?.kyc_status !== "approved" &&
-              profile?.kyc_status !== "rejected" && (
-                <div className="text-sm space-y-1">
-                  {!hasGovtId && (
-                    <p className="text-red-600">
-                      • Upload any ONE government ID (Aadhaar / Passport / Driving License)
-                    </p>
-                  )}
-
-                  {!hasSelfie && (
-                    <p className="text-red-600">
-                      • Upload Selfie for identity confirmation
-                    </p>
-                  )}
-                </div>
-              )}
-          </Card>
+          <SellerDashboardAccess
+            profile={{ role: profile?.role, kycStatus: profile?.kyc_status, sellerStatus: profile?.seller_status, ownerDeclared: Boolean(profile?.owner_declaration_at) }}
+            documents={documents}
+            rejectionReason={kycRejectionReason}
+            onRefresh={async () => { await fetchProfile(); router.refresh(); }}
+          />
 
           {/* KYC */}
 
