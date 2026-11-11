@@ -1,11 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link";
+import { useFormFeedback } from "@/lib/use-form-feedback";
+import { isPendingOwnershipReview, pendingOwnershipQueue, ownershipDecisionConfirmed } from "@/lib/ownership-queue";
 import ReviewEvidenceLinks from "@/components/admin/ReviewEvidenceLinks";
 import { ownershipReviewBlockers, ownershipReviewError } from "@/lib/ownership-review";
 import { createClient } from "@/lib/supabase/client"
 
 const supabase = createClient()
+const OWNERSHIP_SELECTION = `
+ id,user_id,property_id,document_type,document_subtype,document_url,status,created_at,
+ users!inner(id,role,full_name,email,phone),
+ properties!inner(id,title,price,listing_type,status,deleted_at,ownership_verified,ownership_review_status,
+ owner_kind,owner_legal_name,owner_project_name,owner_attested,cities(name),localities(name))
+`;
 
 export default function OwnershipVerificationPage(){
 
@@ -17,97 +26,66 @@ export default function OwnershipVerificationPage(){
   const [loadingDoc,setLoadingDoc] = useState(false)
   const [reviewChecks,setReviewChecks] = useState<Record<string,boolean>>({});
   const [reviewNote,setReviewNote] = useState("");
-  const [reviewError,setReviewError] = useState("");
-  useEffect(() => { setReviewChecks({}); setReviewNote(""); setReviewError(""); }, [selected?.id]);
+  const { feedback, feedbackRef, showFeedback } = useFormFeedback();
+  const [queueError, setQueueError] = useState("");
+  const queueVersion = useRef(0);
+  const invalidateQueueRequests = useCallback(() => { ++queueVersion.current; }, []);
+  const reviewInFlight = useRef(false);
+  useEffect(() => { setReviewChecks({}); setReviewNote(""); }, [selected?.id]);
   const [processing,setProcessing] = useState(false)
 
   /* ================= FETCH QUEUE ================= */
 
-  async function fetchQueue(){
+  const fetchQueue = useCallback(async () => {
+    const version = ++queueVersion.current;
+    setLoadingQueue(true); setQueueError("");
+    try {
+      const { data, error } = await supabase.from("documents").select(OWNERSHIP_SELECTION)
+        .eq("document_type", "ownership").eq("status", "pending")
+        .eq("properties.status", "pending").eq("properties.ownership_verified", false)
+        .eq("properties.ownership_review_status", "unreviewed").is("properties.deleted_at", null)
+        .order("created_at", { ascending: false, nullsFirst: false }).order("id", { ascending: false }).limit(50);
+      if (error) throw new Error(error.message);
+      if (version !== queueVersion.current) return;
+      const rows = pendingOwnershipQueue((data || []) as any[]);
+      setQueue(rows);
+      // An item reviewed/published elsewhere must also leave the detail panel.
+      setSelected((previous: any) => previous ? rows.find(row => row.id === previous.id) || null : null);
+    } catch (error) { if (version === queueVersion.current) setQueueError(error instanceof Error ? error.message : "Could not refresh ownership reviews."); }
+    finally { if (version === queueVersion.current) setLoadingQueue(false); }
+  }, []);
 
-    setLoadingQueue(true)
+  useEffect(() => {
+    void fetchQueue();
+    const refresh = () => { if (!reviewInFlight.current && document.visibilityState === "visible") void fetchQueue(); };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      invalidateQueueRequests();
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [fetchQueue, invalidateQueueRequests]);
 
-    const { data,error } =
-      await supabase
-        .from("documents")
-        .select(`
-          id,
-          user_id,
-          property_id,
-          document_type,
-          document_subtype,
-          document_url,
-          status,
-          created_at,
-          users!inner (
-            id,
-            role,
-            full_name,
-            email,
-            phone
-          ),
-          properties!inner (
-            id,
-            title,
-            price,
-            listing_type,
-            status,
-            ownership_verified,owner_kind,owner_legal_name,owner_project_name,owner_attested,
-            cities(name),
-            localities(name)
-          )
-        `)
-        .eq("document_type","ownership")
-        .eq("status","pending")
-        .eq("properties.status","pending")
-        .eq("properties.ownership_verified",false)
-          .order("created_at",{ascending:false})
-        .limit(50)
-
-    if(error){
-      console.error("Ownership queue error:", error)
+  const selectedDocumentId = selected?.id;
+  const selectedDocumentPath = selected?.document_url;
+  useEffect(() => {
+    let cancelled = false;
+    setFileUrl(null); setLoadingDoc(Boolean(selectedDocumentPath));
+    if (selectedDocumentPath) {
+      void (async () => {
+        try {
+          const { data, error } = await supabase.storage.from("ownership-documents").createSignedUrl(selectedDocumentPath, 300);
+          if (error || !data?.signedUrl) throw new Error("Preview unavailable");
+          if (!cancelled) setFileUrl(data.signedUrl);
+        } catch { if (!cancelled) showFeedback("The private document preview could not be loaded. Open the evidence links below or reload the page to retry."); }
+        finally { if (!cancelled) setLoadingDoc(false); }
+      })();
     }
-
-    setQueue(data || [])
-    setLoadingQueue(false)
-  }
-
-  useEffect(()=>{
-    fetchQueue()
-  },[])
-
-  /* ================= LOAD SIGNED URL ================= */
-
-  async function loadDocument(path:string){
-
-    if(!path) return
-
-    setLoadingDoc(true)
-    setFileUrl(null)
-
-    const { data,error } =
-      await supabase
-        .storage
-        .from("ownership-documents")
-        .createSignedUrl(path,3600)
-
-    if(error){
-      console.error("Signed URL error:", error)
-      setLoadingDoc(false)
-      return
-    }
-
-    setFileUrl(data.signedUrl)
-    setLoadingDoc(false)
-  }
-
-  useEffect(()=>{
-    if(selected){
-      loadDocument(selected.document_url)
-    }else{
-      setFileUrl(null)
-    }
-  },[selected])
+    return () => { cancelled = true; };
+  }, [selectedDocumentId, selectedDocumentPath, showFeedback]);
 
   /* ================= FILE TYPE DETECTOR ================= */
 
@@ -125,17 +103,32 @@ export default function OwnershipVerificationPage(){
   /* ================= APPROVE ================= */
 
   async function review(doc: any, approve: boolean) {
-    if (processing) return;
-    if (!reviewNote.trim()) { setReviewError("Enter a review note or rejection reason before submitting."); return; }
-    if (approve && approvalBlockers.length) { setReviewError(approvalBlockers.join(" ")); return; }
-    setReviewError("");
-    setProcessing(true);
+    if (reviewInFlight.current) return;
+    if (!reviewNote.trim()) { showFeedback("Enter a review note or rejection reason before submitting."); return; }
+    if (approve && approvalBlockers.length) { showFeedback(approvalBlockers.join(" ")); return; }
+    showFeedback("");
+    reviewInFlight.current = true; ++queueVersion.current; setProcessing(true);
     try {
+      // Refresh the selected item before any decision, including when another
+      // admin/tab has already published it while this page remained open.
+      const { data: current, error: currentError } = await supabase.from("documents").select(OWNERSHIP_SELECTION).eq("id", doc.id).single();
+      if (currentError || !current) throw new Error("Could not refresh this review. No new decision was sent. Refresh the pending queue and try again.");
+      if (!isPendingOwnershipReview(current as any)) {
+        setSelected(null); setQueue(previous => previous.filter(item => item.property_id !== doc.property_id));
+        showFeedback("This property is no longer awaiting ownership review. The pending queue has been refreshed.", "success");
+        await fetchQueue(); return;
+      }
       const { error } = await supabase.rpc("review_property_ownership", { p_document_id: doc.id, p_approve: approve, p_checks: reviewChecks, p_note: reviewNote.trim() });
-      if (error) { setReviewError(ownershipReviewError(error)); return; }
-      setSelected(null); await fetchQueue();
-    } catch (error) { setReviewError(ownershipReviewError(error instanceof Error ? error : {})); }
-    finally { setProcessing(false); }
+      if (error) { showFeedback(ownershipReviewError(error)); return; }
+      const { data: saved, error: savedError } = await supabase.from("documents").select(OWNERSHIP_SELECTION).eq("id", doc.id).single();
+      if (savedError || !saved) throw new Error("The review request completed, but the saved decision could not be confirmed. Refresh the pending queue before retrying. Your note is retained.");
+      if (!ownershipDecisionConfirmed(saved as any, approve)) throw new Error("The saved ownership decision does not match the requested decision. A resubmission or database trigger may have reset it. Refresh the queue and inspect the saved document/property status. Your note is retained.");
+      setQueue(previous => previous.filter(item => item.property_id !== doc.property_id));
+      setSelected(null); setFileUrl(null);
+      showFeedback(approve ? "Ownership approved and removed from pending reviews. Publication is a separate step in Admin → Listings." : "Ownership rejected and removed from pending reviews. It returns only when ownership is submitted for review again.", "success");
+      await fetchQueue();
+    } catch (error) { showFeedback(ownershipReviewError(error instanceof Error ? error : {})); }
+    finally { reviewInFlight.current = false; setProcessing(false); setLoadingQueue(false); }
   }
 
   /* ================= UI ================= */
@@ -146,25 +139,30 @@ export default function OwnershipVerificationPage(){
 
   return(
 
-    <div className="max-w-6xl mx-auto p-10">
+    <div className="max-w-6xl mx-auto p-4 sm:p-10">
 
       <h1 className="text-2xl font-semibold mb-8">
         Property Ownership Verification
       </h1>
 
-      <div className="grid grid-cols-3 gap-6">
+      <p className="mb-4 text-sm text-slate-600">Only properties awaiting ownership review appear here. Approved, rejected and published properties are excluded until a new ownership review is required. Supporting documents and past decisions remain in the ownership audit.</p>
+      {feedback.text && <div ref={feedbackRef} tabIndex={-1} role={feedback.kind === "error" ? "alert" : "status"} className={`mb-4 rounded-lg border p-4 outline-none ${feedback.kind === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{feedback.text}{feedback.kind === "success" && <Link className="mt-2 block underline" href="/admin/properties">Open listing publication reviews</Link>}</div>}
+      {queueError && <p role="alert" className="mb-4 rounded-lg border border-red-200 p-3 text-sm text-red-700">Could not refresh the queue; displayed data may be outdated. {queueError}</p>}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
         {/* QUEUE */}
 
         <div className="border rounded-xl p-4">
 
           <h2 className="font-semibold mb-4">
-            Pending Ownership Documents
+            Pending Ownership Reviews
           </h2>
 
           {loadingQueue && <p>Loading...</p>}
 
-          {!loadingQueue && queue.length===0 &&
+          <button type="button" disabled={processing || loadingQueue} onClick={() => void fetchQueue()} className="mb-4 text-sm underline disabled:opacity-50">Refresh pending reviews</button>
+
+          {!loadingQueue && !queueError && queue.length===0 &&
             <p className="text-sm text-gray-500">
               No pending documents
             </p>
@@ -174,10 +172,11 @@ export default function OwnershipVerificationPage(){
 
             {queue.map(item=>(
 
-              <div
+              <button type="button"
                 key={item.id}
-                onClick={()=>setSelected(item)}
-                className={`border p-3 rounded cursor-pointer hover:bg-gray-100 ${
+                disabled={processing || loadingQueue}
+                onClick={()=>{setSelected(item);showFeedback("");}}
+                className={`w-full border p-3 text-left rounded cursor-pointer hover:bg-gray-100 disabled:opacity-50 ${
                   selected?.id===item.id ? "bg-gray-100":""}`}
               >
                 <div className="font-medium">
@@ -192,7 +191,7 @@ export default function OwnershipVerificationPage(){
                   {item.document_subtype || item.document_type}
                 </div>
 
-              </div>
+              </button>
 
             ))}
 
@@ -202,7 +201,7 @@ export default function OwnershipVerificationPage(){
 
         {/* REVIEW PANEL */}
 
-        <div className="col-span-2 border rounded-xl p-4">
+        <div className="min-w-0 lg:col-span-2 border rounded-xl p-4">
 
           {!selected &&
             <p className="text-gray-500">
@@ -249,6 +248,7 @@ export default function OwnershipVerificationPage(){
               {fileUrl && fileType==="pdf" && (
                 <iframe
                   src={fileUrl}
+                  title="Ownership evidence preview"
                   className="w-full h-[600px] border rounded mb-4"
                 />
               )}
@@ -256,6 +256,7 @@ export default function OwnershipVerificationPage(){
               {fileUrl && fileType==="image" && (
                 <img
                   src={fileUrl}
+                  alt="Ownership evidence"
                   className="max-h-[600px] border rounded mb-4"
                 />
               )}
@@ -275,11 +276,10 @@ export default function OwnershipVerificationPage(){
                 <p className="text-sm text-slate-600">You can reject with a reason even when seller details or checklist items are incomplete.</p>
               </div>
               {approvalBlockers.length > 0 && <div id="ownership-approval-requirements" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Before you can approve ownership:</p><ul className="mt-2 list-disc space-y-1 pl-5">{approvalBlockers.map(reason=><li key={reason}>{reason}</li>)}</ul></div>}
-              {reviewError && <p role="alert" className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">{reviewError}</p>}
               <div className="flex gap-4">
 
                 <button
-                  disabled={processing || approvalBlockers.length > 0}
+                  disabled={processing || loadingQueue || !isPendingOwnershipReview(selected) || approvalBlockers.length > 0}
                   aria-describedby={approvalBlockers.length ? "ownership-approval-requirements" : undefined}
                   onClick={()=>review(selected,true)}
                   className="bg-green-600 text-white px-4 py-2 rounded disabled:cursor-not-allowed disabled:opacity-40"
@@ -288,7 +288,7 @@ export default function OwnershipVerificationPage(){
                 </button>
 
                 <button
-                  disabled={processing || !reviewNote.trim()}
+                  disabled={processing || loadingQueue || !isPendingOwnershipReview(selected) || !reviewNote.trim()}
                   onClick={()=>review(selected,false)}
                   className="bg-red-600 text-white px-4 py-2 rounded disabled:cursor-not-allowed disabled:opacity-40"
                 >
