@@ -249,6 +249,73 @@ await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_identity
 await db.exec(reviewedChanges);
 assert.equal((await db.query('SELECT count(*)::int AS n FROM public.declaration_change_requests')).rows[0].n,7);
 console.log('Reviewed declaration checks passed: sticky verification lock, free pre-verification edits, one pending request, effective category unchanged pending/rejected/cancelled, private retained evidence, atomic admin approval, property re-review, inactive accounts stay inactive, revoked identity rejected and repeatability.');
+// Reproduce the three deployed legacy authorities, then retire only those bindings.
+const retirement=fs.readFileSync('supabase/migrations/20261111_retire_legacy_verification_sync.sql','utf8');
+if(process.argv.includes('--text-schema')){
+ ids.affected='00000000-0000-0000-0000-000000000097';
+ const affectedProperty='00000000-0000-0000-0000-000000000098',affectedDoc='00000000-0000-0000-0000-000000000099';
+ await db.exec('RESET ROLE');
+ await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status,seller_identity,owner_declaration_at) VALUES($1,$1,'buyer','approved','basic','owner',now())",[ids.affected]);
+ for(const type of ['aadhar','selfie']){const path=ids.affected+'/'+type+'/reviewed';await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[ids.affected,type,path]);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);}
+ await as('admin');await db.query('SELECT public.admin_activate_verified_seller($1,$2)',[ids.affected,'Identity and declaration reviewed.']);
+ await as('affected');await db.query(insert,[affectedProperty,ids.affected]);
+ const affectedPath=affectedProperty+'/proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[affectedPath]);
+ await db.query("INSERT INTO public.documents(id,user_id,property_id,document_type,document_url) VALUES($1,$2,$3,'ownership',$4)",[affectedDoc,ids.affected,affectedProperty,affectedPath]);
+ await db.exec('RESET ROLE');
+ await db.exec(`CREATE FUNCTION public.sync_user_verification_state() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF NEW.status::text='approved' THEN UPDATE public.users SET seller_status='verified' WHERE id=NEW.user_id AND seller_status::text='active'; END IF; RETURN NEW; END $$;
+ CREATE TRIGGER sync_user_verification_trigger AFTER UPDATE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.sync_user_verification_state();
+ CREATE FUNCTION public.sync_property_ownership_state() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+ CREATE TRIGGER sync_property_ownership_trigger AFTER UPDATE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.sync_property_ownership_state();
+ CREATE FUNCTION public.auto_approve_seller() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kyc_status::text='approved' THEN NEW.seller_status:='verified'; END IF; RETURN NEW; END $$;
+ CREATE TRIGGER on_kyc_status_update BEFORE UPDATE OF kyc_status ON public.users FOR EACH ROW EXECUTE FUNCTION public.auto_approve_seller();`);
+ await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[affectedDoc,checks,'Exact ownership reviewed.']);
+ await db.exec('RESET ROLE');
+ assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.affected])).rows[0].seller_status,'verified');
+ assert.equal((await db.query('SELECT status FROM public.documents WHERE id=$1',[affectedDoc])).rows[0].status,'pending');
+ assert.equal((await db.query('SELECT ownership_review_status FROM public.properties WHERE id=$1',[affectedProperty])).rows[0].ownership_review_status,'approved');
+ // A legacy status alone does not authorize restoration.
+ const unreviewed='00000000-0000-0000-0000-000000000101';
+ await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status) VALUES($1,$1,'seller','approved','verified')",[unreviewed]);
+ // An older activation must never override a later staff demotion/revocation.
+ const revoked='00000000-0000-0000-0000-000000000103';
+ await db.query("INSERT INTO public.users(id,user_id,role,kyc_status,seller_status,seller_identity,owner_declaration_at) VALUES($1,$1,'seller','approved','verified','owner',now())",[revoked]);
+ for(const type of ['aadhar','selfie']){const path=revoked+'/'+type;await db.query("INSERT INTO public.documents(user_id,document_type,status,document_url) VALUES($1,$2,'approved',$3)",[revoked,type,path]);await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);}
+ await db.query("INSERT INTO public.account_security_events(user_id,actor_auth_id,action,details,created_at) VALUES($1,$2,'seller_activation_reviewed','{}',now()-interval '2 days'),($1,$2,'account_permissions_changed','{\"old_role\":\"seller\",\"new_role\":\"buyer\",\"old_kyc\":\"approved\",\"new_kyc\":\"approved\"}',now()-interval '1 day')",[revoked,ids.admin]);
+ await db.exec(retirement);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN ('sync_user_verification_trigger','sync_property_ownership_trigger','on_kyc_status_update')")).rows[0].n,0);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN ('owner_account_changed','guard_owner_documents','legacy_document_review','legacy_property_review','legacy_user_review')")).rows[0].n,5);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM brick_private.retired_verification_triggers")).rows[0].n,3);
+ assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[unreviewed])).rows[0].seller_status,'verified');
+ assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[revoked])).rows[0].seller_status,'verified');
+ assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.affected])).rows[0].seller_status,'active');
+ const repaired=(await db.query('SELECT d.status,d.reviewed_at=r.created_at AS same_stamp,d.reviewed_by=r.reviewer_auth_id AS same_reviewer FROM public.documents d JOIN public.ownership_reviews r ON r.document_id=d.id WHERE d.id=$1',[affectedDoc])).rows[0];
+ assert.equal(repaired.status,'approved');assert.equal(repaired.same_stamp,true);assert.equal(repaired.same_reviewer,true);
+ assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[affectedProperty])).rows[0].status,'pending');
+ await as('admin');await db.query('SELECT public.admin_publish_property($1)',[affectedProperty]);
+ await db.exec('RESET ROLE');await db.exec(retirement);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM public.account_security_events WHERE user_id=$1 AND action='legacy_seller_activation_restored'",[ids.affected])).rows[0].n,1);
+ await as('affected');await assert.rejects(db.query('SELECT * FROM brick_private.retired_verification_triggers'),/permission denied/);
+ // Genuine resubmission stays pending on rerun and requires fresh review.
+ const replacementPath=affectedProperty+'/new-proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[replacementPath]);
+ await db.query("UPDATE public.documents SET status='pending',document_url=$1,reviewed_at=NULL,reviewed_by=NULL WHERE id=$2",[replacementPath,affectedDoc]);
+ await db.exec('RESET ROLE');await db.exec(retirement);
+ assert.equal((await db.query('SELECT status FROM public.documents WHERE id=$1',[affectedDoc])).rows[0].status,'pending');
+ await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[affectedDoc,checks,'Replacement evidence reviewed.']);await db.query('SELECT public.admin_publish_property($1)',[affectedProperty]);
+ await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.affected])).rows[0].seller_status,'active');
+ // Future registrations activate through the canonical full-ID/selfie workflow.
+ ids.future='00000000-0000-0000-0000-000000000102';
+ await db.query("INSERT INTO public.users(id,user_id) VALUES($1,$1)",[ids.future]);await as('future');await db.query("SELECT public.declare_owner_identity('owner',true)");
+ for(const type of ['aadhar','selfie']){await as('future');const path=ids.future+'/'+type;await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);const doc=(await db.query("INSERT INTO public.documents(user_id,document_type,document_url) VALUES($1,$2,$3) RETURNING id",[ids.future,type,path])).rows[0].id;await as('admin');await db.query('SELECT public.review_identity_document($1,true,$2)',[doc,'Identity/selfie matched.']);}
+ await db.exec('RESET ROLE');assert.equal((await db.query('SELECT seller_status FROM public.users WHERE id=$1',[ids.future])).rows[0].seller_status,'active');
+ // Fail closed if a familiar trigger name is bound to an unexpected function.
+ await db.exec("CREATE TRIGGER sync_user_verification_trigger AFTER UPDATE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.legacy_review_side_effect()");
+ await assert.rejects(db.exec(retirement),/Unexpected function on legacy trigger/);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname='sync_user_verification_trigger'")).rows[0].n,1);
+ await db.exec('DROP TRIGGER sync_user_verification_trigger ON public.documents');
+ console.log('Legacy reset reproduced and fixed: audited activation/doc restoration, exact trigger retirement, pending resubmission preserved, publication separate, repeatable migration and future registration.');
+}else{await db.exec('RESET ROLE');await db.exec(retirement);await db.exec(retirement);}
+
 const diagnosticSql=fs.readFileSync('supabase/diagnostics/ownership-review-reset.sql','utf8').replace('f0aeee08-6dce-44ae-9e3c-f467dc6fb059',ids.reviewedProperty);
 await db.exec('BEGIN READ ONLY');const diagnostic=JSON.parse((await db.query(diagnosticSql)).rows[0].ownership_review_diagnostic);await db.exec('ROLLBACK');
 assert.equal(diagnostic.property.id,ids.reviewedProperty);assert.equal(diagnostic.actual_listing_seller.profile_id,ids.fresh);assert.ok(diagnostic.review_related_triggers.some(t=>t.function==='brick_private.evidence_resubmitted'));assert.ok(diagnostic.installed_review_routines.some(f=>f.function==='public.review_property_ownership'));
