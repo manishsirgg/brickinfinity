@@ -22,26 +22,33 @@ const allowed = [
   "Contact the seller using the enquiry panel.", "", null,
 ];
 for (const value of blocked) assert.equal(exports.hasDescriptionContactDetails(value), true, String(value));
+for (const value of blocked) assert.equal(exports.hasPropertyContactDetails(value), true);
 for (const value of allowed) assert.equal(exports.hasDescriptionContactDetails(value), false, String(value));
 console.log(`Description policy checks passed (${blocked.length} blocked, ${allowed.length} allowed).`);
 
 if (process.argv.includes("--database")) {
   const { PGlite } = await import("@electric-sql/pglite");
   const db = new PGlite();
-  await db.exec("CREATE TABLE public.properties (id integer PRIMARY KEY, description text, status text); INSERT INTO public.properties VALUES (1, 'Legacy 9899601701', 'pending');");
+  await db.exec("CREATE TABLE public.properties (id integer PRIMARY KEY, description text, status text, title text DEFAULT 'Property title'); INSERT INTO public.properties (id,description,status,title) VALUES (1, 'Legacy 9899601701', 'pending','Call 9899601701');");
   const migration = fs.readFileSync("supabase/migrations/20261110_block_description_contact_details.sql", "utf8");
   await db.exec(migration);
   await db.exec(migration);
+  const titleMigration = fs.readFileSync("supabase/migrations/20261110_block_title_contact_details.sql", "utf8");
+  await db.exec(titleMigration);
+  await db.exec(titleMigration);
   for (const value of [...blocked, ...allowed]) {
     const { rows } = await db.query("SELECT public.description_has_contact_details($1) AS blocked", [value]);
     assert.equal(rows[0].blocked, exports.hasDescriptionContactDetails(value), `JS/SQL consistency: ${value}`);
   }
   for (const value of blocked) {
-    await assert.rejects(db.query("INSERT INTO public.properties VALUES (2,$1,'pending')", [value]), /Remove phone numbers/);
+    await assert.rejects(db.query("INSERT INTO public.properties (id,title,description,status) VALUES (2,$1,'Clean description','pending')", [value]), /from the title/);
+    await assert.rejects(db.query("UPDATE public.properties SET title=$1 WHERE id=1", [value + " changed"]), /from the title/);
+    await assert.rejects(db.query("INSERT INTO public.properties (id,description,status) VALUES (2,$1,'pending')", [value]), /Remove phone numbers/);
     await assert.rejects(db.query("UPDATE public.properties SET description=$1 WHERE id=1", [value + " changed"]), /Remove phone numbers/);
   }
-  await db.exec("UPDATE public.properties SET status='active', description=description WHERE id=1");
+  await db.exec("UPDATE public.properties SET status='active', description=description, title=title WHERE id=1");
   await db.query("UPDATE public.properties SET description=$1 WHERE id=1", [allowed[0]]);
+  await db.query("UPDATE public.properties SET title=$1 WHERE id=1", ["2000 sq ft commercial hall for rent"]);
   await db.close();
-  console.log("Database trigger checks passed: direct writes blocked, legacy moderation unaffected, clean edits allowed, migration repeatable.");
+  console.log("Title and description database trigger checks passed: direct writes blocked, legacy moderation unaffected, clean edits allowed, migration repeatable.");
 }

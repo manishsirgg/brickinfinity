@@ -1,6 +1,6 @@
 "use client";
 
-import { hasDescriptionContactDetails, DESCRIPTION_CONTACT_MESSAGE } from "@/lib/property-description-policy";
+import { hasPropertyContactDetails, DESCRIPTION_CONTACT_MESSAGE, TITLE_CONTACT_MESSAGE } from "@/lib/property-description-policy";
 
 import MediaFilePreview from "@/components/property/MediaFilePreview";
 import { useEffect, useRef, useState } from "react";
@@ -332,7 +332,8 @@ export default function EditPropertyPage() {
   async function handleSave(){
 
     if (saving) return;
-    if (hasDescriptionContactDetails(property.description)) { setMessage(DESCRIPTION_CONTACT_MESSAGE); return; }
+    if (hasPropertyContactDetails(property.title)) { setMessage(TITLE_CONTACT_MESSAGE); return; }
+    if (hasPropertyContactDetails(property.description)) { setMessage(DESCRIPTION_CONTACT_MESSAGE); return; }
     setSaving(true);
     setMessage("");
     setVideoProgress(null);
@@ -566,15 +567,20 @@ export default function EditPropertyPage() {
           <h3 className="text-lg font-semibold">Basic Details</h3>
 
           <input className="input-premium"
+            aria-label="Property title"
+            aria-describedby="title-contact-hint"
+            aria-invalid={hasPropertyContactDetails(property.title)}
             value={property.title}
             onChange={(e)=>
               setProperty({...property,title:e.target.value})
             }
           />
 
+          <p id="title-contact-hint" className="text-sm text-slate-600">Keep contact details out of the title. Buyers can use Contact Seller.</p>
+
           <textarea className="textarea-premium"
             aria-describedby="description-contact-hint"
-            aria-invalid={hasDescriptionContactDetails(property.description)}
+            aria-invalid={hasPropertyContactDetails(property.description)}
             value={property.description}
             onChange={(e)=>
               setProperty({...property,description:e.target.value})
