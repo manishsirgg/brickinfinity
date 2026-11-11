@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
 import type { OwnerFields } from "@/lib/owner-verification";
 
-type OwnerProfile = { id: string; role?: string; seller_identity?: string | null; full_name?: string | null; kyc_status?: string | null };
+type OwnerProfile = { id: string; role?: string; seller_identity?: string | null; full_name?: string | null; kyc_status?: string | null; seller_legal_name?: string | null };
 export async function loadOwnerListingDefaults(profile: OwnerProfile): Promise<OwnerFields> {
   if (profile.role === "admin") return {};
   const kind = profile.seller_identity;
+  if (["owner", "project_owner_builder"].includes(kind || "") && profile.seller_legal_name?.trim()) return { owner_kind: kind, owner_legal_name: profile.seller_legal_name.trim() };
   if (kind === "owner") return { owner_kind: kind, owner_legal_name: profile.kyc_status === "approved" ? profile.full_name?.trim() || "" : "" };
   if (kind === "project_owner_builder") {
     // A person's KYC name is not evidence of an owning company's legal name.

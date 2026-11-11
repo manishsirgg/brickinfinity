@@ -35,6 +35,7 @@ export default function SellerDashboardAccess({ profile, documents, rejectionRea
         {(profile.role !== "seller" || profile.sellerStatus !== "active") && <li>Seller access is not active yet. {hasId && approvedId && selfie?.status === "approved" && profile.ownerDeclared ? "Ask an admin to use Activate Seller Access on your account in Admin → Users after reviewing your evidence. Saving the declaration again does not override restricted access." : "Complete the identity steps above; an admin must activate seller access. Existing restrictions require admin review."}</li>}
       </ul>
       <p className="text-xs text-slate-600">Identity status: {profile.kycStatus || "not submitted"} · Seller status: {profile.sellerStatus || "not active"}. Each property still requires separate ownership review.</p>
+      {access.reason === "identity-review" && <Link prefetch={false} href="/seller-review" className="inline-flex rounded-lg border px-3 py-2 text-sm">View read-only review dashboard</Link>}
     </>}
     <button type="button" onClick={onRefresh} className="rounded-lg border px-3 py-2 text-sm">Refresh access status</button>
   </section>;

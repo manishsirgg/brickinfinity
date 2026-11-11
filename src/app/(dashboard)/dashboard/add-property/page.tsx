@@ -118,7 +118,7 @@ async function loadCurrentUserRole() {
 
   const { data } = await supabase
     .from("users")
-    .select("id,role,seller_identity,full_name,kyc_status")
+    .select("id,role,seller_identity,full_name,kyc_status,seller_legal_name")
     .eq("user_id", authId)
     .maybeSingle();
 
@@ -415,7 +415,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
     const profileId = await getProfileId(session.user.id);
     const { data: userRoleRecord } = await supabaseAction
       .from("users")
-      .select("id,role,seller_identity,full_name,kyc_status")
+      .select("id,role,seller_identity,full_name,kyc_status,seller_legal_name")
       .eq("user_id", session.user.id)
       .maybeSingle();
 

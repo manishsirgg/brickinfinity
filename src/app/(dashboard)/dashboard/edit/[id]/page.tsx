@@ -150,7 +150,7 @@ export default function EditPropertyPage() {
       return;
     }
 
-    const { data: actor } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status").eq("user_id",session.user.id).maybeSingle();
+    const { data: actor } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status,seller_legal_name").eq("user_id",session.user.id).maybeSingle();
     setIsAdmin(actor?.role === "admin");
     setDeclaredOwnerKind(actor?.seller_identity || null);
     const ownerDefaults = actor && actor.role !== "admin" ? await loadOwnerListingDefaults(actor) : null;
@@ -368,7 +368,7 @@ export default function EditPropertyPage() {
 
       if(!session) throw new Error("Session expired");
 
-      const { data: actor, error: actorError } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status").eq("user_id", session.user.id).single();
+      const { data: actor, error: actorError } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status,seller_legal_name").eq("user_id", session.user.id).single();
       if (actorError || !actor) throw new Error("Could not verify your owner declaration. Refresh the page and try again.");
       setIsAdmin(actor.role === "admin");
       setDeclaredOwnerKind(actor.seller_identity || null);
