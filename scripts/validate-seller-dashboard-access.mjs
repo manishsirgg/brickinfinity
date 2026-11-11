@@ -27,6 +27,11 @@ assert.equal(policy.sellerDashboardAccess({ ...ready, role: 'buyer' }).allowed, 
 const render = (profile, documents = {}) => renderToStaticMarkup(React.createElement(Status, { profile, documents, onRefresh() {} }));
 const screenshot = render({ ...ready, sellerStatus: 'basic' }, { aadhar: { document_url: 'private-id', status: 'approved' } });
 assert.ok(screenshot.includes('Upload a selfie'));
+assert.ok(screenshot.includes('all three are mandatory'));
+assert.ok(screenshot.includes('Completing only one or two is not enough'));
+assert.ok(screenshot.includes('One government ID:'));
+assert.ok(screenshot.includes('A matching selfie:'));
+assert.ok(screenshot.includes('The owner-only declaration:'));
 assert.ok(screenshot.includes('Seller access is not active yet'));
 assert.ok(!screenshot.includes('Open seller dashboard'));
 assert.ok(!screenshot.includes('You can now list properties'));
