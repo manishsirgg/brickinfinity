@@ -1,6 +1,12 @@
 import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import ts from 'typescript';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
 const require=createRequire(import.meta.url);const modules={};function load(path){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,require:name=>modules[name]||require(name)});return exports;}
 const policy=load('src/lib/owner-verification.ts');modules['@/lib/owner-verification']=policy;const Badge=load('src/components/property/VerificationBadges.tsx').default;
+const review=load('src/lib/ownership-review.ts');
+const completeChecks={identity_matches:true,property_matches:true,owns_property:true,no_agent:true};
+assert.ok(review.ownershipReviewBlockers({},completeChecks,'Reject incomplete details').length>0);
+assert.deepEqual(Array.from(review.ownershipReviewBlockers({owner_kind:'owner',owner_legal_name:'Legal Owner',owner_attested:true},completeChecks,'Evidence checked')),[]);
+assert.ok(review.ownershipReviewBlockers({owner_kind:'project_owner_builder',owner_legal_name:'Company',owner_project_name:'Project',owner_attested:true},completeChecks,'Evidence checked').some(reason=>reason.includes('checklist')));
+assert.ok(review.ownershipReviewError({code:'42P01',message:'relation "documents" does not exist'}).includes('decision was not saved'));
 assert.ok(policy.validateOwnerFields({owner_kind:'agent',owner_attested:true,owner_legal_name:'Agent'}));
 assert.ok(policy.validateOwnerFields({owner_kind:'project_owner_builder',owner_legal_name:'Company',owner_attested:true}));
 assert.equal(policy.validateOwnerFields({owner_kind:'project_owner_builder',owner_legal_name:'Company',owner_project_name:'Owned project',owner_attested:true}),null);

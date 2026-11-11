@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import ReviewEvidenceLinks from "@/components/admin/ReviewEvidenceLinks";
-import { validateOwnerFields } from "@/lib/owner-verification";
+import { ownershipReviewBlockers, ownershipReviewError } from "@/lib/ownership-review";
 import { createClient } from "@/lib/supabase/client"
 
 const supabase = createClient()
@@ -17,7 +17,8 @@ export default function OwnershipVerificationPage(){
   const [loadingDoc,setLoadingDoc] = useState(false)
   const [reviewChecks,setReviewChecks] = useState<Record<string,boolean>>({});
   const [reviewNote,setReviewNote] = useState("");
-  useEffect(() => { setReviewChecks({}); setReviewNote(""); }, [selected?.id]);
+  const [reviewError,setReviewError] = useState("");
+  useEffect(() => { setReviewChecks({}); setReviewNote(""); setReviewError(""); }, [selected?.id]);
   const [processing,setProcessing] = useState(false)
 
   /* ================= FETCH QUEUE ================= */
@@ -125,13 +126,15 @@ export default function OwnershipVerificationPage(){
 
   async function review(doc: any, approve: boolean) {
     if (processing) return;
-    if (!reviewNote.trim()) { alert("Record a review note or rejection reason."); return; }
+    if (!reviewNote.trim()) { setReviewError("Enter a review note or rejection reason before submitting."); return; }
+    if (approve && approvalBlockers.length) { setReviewError(approvalBlockers.join(" ")); return; }
+    setReviewError("");
     setProcessing(true);
     try {
       const { error } = await supabase.rpc("review_property_ownership", { p_document_id: doc.id, p_approve: approve, p_checks: reviewChecks, p_note: reviewNote.trim() });
-      if (error) throw new Error(error.message);
+      if (error) { setReviewError(ownershipReviewError(error)); return; }
       setSelected(null); await fetchQueue();
-    } catch (error) { alert(error instanceof Error ? error.message : "Ownership review failed"); }
+    } catch (error) { setReviewError(ownershipReviewError(error instanceof Error ? error : {})); }
     finally { setProcessing(false); }
   }
 
@@ -139,6 +142,7 @@ export default function OwnershipVerificationPage(){
 
   const fileType =
     selected ? getFileType(selected.document_url) : null
+  const approvalBlockers = ownershipReviewBlockers(selected?.properties || {}, reviewChecks, reviewNote);
 
   return(
 
@@ -267,22 +271,26 @@ export default function OwnershipVerificationPage(){
                 <p>Legal owner: {selected.properties?.owner_legal_name || "Not provided — owner must update listing"}</p>
                 <p>Category: {selected.properties?.owner_kind || "Not declared"} · Project: {selected.properties?.owner_project_name || "—"}</p>
                 {Object.entries({ identity_matches:"The identity evidence matches the legal owner / owning company", property_matches:"The evidence identifies this exact property or project", owns_property:"The applicant / builder company actually owns the property", no_agent:"This is not an agent, broker, contractor or marketing-intermediary listing", ...(selected.properties?.owner_kind === "project_owner_builder" ? { company_owns_project:"Company and project ownership evidence reviewed" } : {}) }).map(([key,label]) => <label key={key} className="flex gap-2 text-sm"><input type="checkbox" checked={!!reviewChecks[key]} onChange={e=>setReviewChecks(prev=>({...prev,[key]:e.target.checked}))}/>{label}</label>)}
-                <label className="block text-sm">Review note / rejection reason<textarea className="mt-1 w-full rounded border p-2" value={reviewNote} onChange={e=>setReviewNote(e.target.value)}/></label>
+                <label className="block text-sm">Review note / rejection reason (required)<textarea required className="mt-1 w-full rounded border p-2" value={reviewNote} onChange={e=>setReviewNote(e.target.value)}/></label>
+                <p className="text-sm text-slate-600">You can reject with a reason even when seller details or checklist items are incomplete.</p>
               </div>
+              {approvalBlockers.length > 0 && <div id="ownership-approval-requirements" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Before you can approve ownership:</p><ul className="mt-2 list-disc space-y-1 pl-5">{approvalBlockers.map(reason=><li key={reason}>{reason}</li>)}</ul></div>}
+              {reviewError && <p role="alert" className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">{reviewError}</p>}
               <div className="flex gap-4">
 
                 <button
-                  disabled={processing || Boolean(validateOwnerFields(selected.properties || {})) || !reviewNote.trim() || !["identity_matches","property_matches","owns_property","no_agent",...(selected.properties?.owner_kind === "project_owner_builder" ? ["company_owns_project"] : [])].every(key => reviewChecks[key])}
+                  disabled={processing || approvalBlockers.length > 0}
+                  aria-describedby={approvalBlockers.length ? "ownership-approval-requirements" : undefined}
                   onClick={()=>review(selected,true)}
-                  className="bg-green-600 text-white px-4 py-2 rounded"
+                  className="bg-green-600 text-white px-4 py-2 rounded disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Approve Ownership
                 </button>
 
                 <button
-                  disabled={processing}
+                  disabled={processing || !reviewNote.trim()}
                   onClick={()=>review(selected,false)}
-                  className="bg-red-600 text-white px-4 py-2 rounded"
+                  className="bg-red-600 text-white px-4 py-2 rounded disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Reject
                 </button>
