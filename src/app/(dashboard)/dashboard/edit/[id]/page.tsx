@@ -1,6 +1,7 @@
 "use client";
 import OwnerListingFields from "@/components/property/OwnerListingFields";
-import { validateOwnerFields } from "@/lib/owner-verification";
+import { loadOwnerListingDefaults } from "@/lib/owner-listing-defaults";
+import { applyOwnerDefaults, validateOwnerFields } from "@/lib/owner-verification";
 import { useFormFeedback } from "@/lib/use-form-feedback";
 import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
 import { rentalDetailsPayload } from "@/lib/property-rental-details";
@@ -149,13 +150,15 @@ export default function EditPropertyPage() {
       return;
     }
 
-    const { data: actor } = await supabase.from("users").select("role,seller_identity").eq("user_id",session.user.id).maybeSingle();
+    const { data: actor } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status").eq("user_id",session.user.id).maybeSingle();
     setIsAdmin(actor?.role === "admin");
     setDeclaredOwnerKind(actor?.seller_identity || null);
+    const ownerDefaults = actor && actor.role !== "admin" ? await loadOwnerListingDefaults(actor) : null;
     setAmenities(data.amenities || []);
 
     setProperty({
       ...data,
+      ...(ownerDefaults ? applyOwnerDefaults(data, ownerDefaults) : {}),
       price:data.price?.toString() || "",
       monthly_rate:data.monthly_rate?.toString() || (isRentListingType(data.listing_type) ? data.price?.toString() || "" : ""),
       daily_rate:data.daily_rate?.toString() || "",
@@ -365,10 +368,15 @@ export default function EditPropertyPage() {
 
       if(!session) throw new Error("Session expired");
 
-      const { data: actor, error: actorError } = await supabase.from("users").select("role,seller_identity").eq("user_id", session.user.id).single();
+      const { data: actor, error: actorError } = await supabase.from("users").select("id,role,seller_identity,full_name,kyc_status").eq("user_id", session.user.id).single();
       if (actorError || !actor) throw new Error("Could not verify your owner declaration. Refresh the page and try again.");
       setIsAdmin(actor.role === "admin");
       setDeclaredOwnerKind(actor.seller_identity || null);
+      if (actor.role !== "admin" && property.owner_kind !== actor.seller_identity) {
+        const defaults = await loadOwnerListingDefaults(actor);
+        setProperty((previous: typeof property) => ({ ...previous, ...applyOwnerDefaults(previous, defaults) }));
+        throw new Error("Your Profile declaration changed. We updated the owner category; review the legal owner/project details and confirm this property again before saving.");
+      }
       const currentOwnerError = validateOwnerFields(property, actor.role === "admin", actor.seller_identity || null);
       if (currentOwnerError) throw new Error(currentOwnerError);
 
@@ -691,7 +699,8 @@ export default function EditPropertyPage() {
               setProperty({
                 ...property,
                 city_id:"",
-                locality_id:""
+                locality_id:"",
+                owner_attested:false
               });
               setLocalityName("");
             }}
@@ -712,7 +721,8 @@ export default function EditPropertyPage() {
                 setProperty({
                   ...property,
                   city_id:cityId,
-                  locality_id:""
+                  locality_id:"",
+                  owner_attested:false
                 });
                 setLocalityName("");
                 loadLocalitiesForCity(cityId);
@@ -731,7 +741,7 @@ export default function EditPropertyPage() {
             placeholder="Enter locality"
             list="edit-localities-list"
             disabled={!property.city_id}
-            onChange={(e)=>setLocalityName(e.target.value)}
+            onChange={(e)=>{setLocalityName(e.target.value);setProperty((previous: typeof property)=>({...previous,owner_attested:false}));}}
           />
           <datalist id="edit-localities-list">
             {localities.map((locality)=>(

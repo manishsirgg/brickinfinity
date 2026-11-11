@@ -1,6 +1,21 @@
 import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import ts from 'typescript';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
 const require=createRequire(import.meta.url);const modules={};function load(path){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,require:name=>modules[name]||require(name)});return exports;}
 const policy=load('src/lib/owner-verification.ts');modules['@/lib/owner-verification']=policy;const Badge=load('src/components/property/VerificationBadges.tsx').default;
+let previousCompany = null;const defaultQueries=[];
+modules['@/lib/supabase/client']={createClient:()=>({from:table=>{const query=new Proxy({},{get(_,key){if(key==='then')return resolve=>resolve({data:previousCompany,error:null});return (...args)=>{defaultQueries.push({table,key,args});return query}}});return query}})};
+const defaults=load('src/lib/owner-listing-defaults.ts');
+const personal=await defaults.loadOwnerListingDefaults({id:'owner',role:'seller',seller_identity:'owner',full_name:'Verified Owner',kyc_status:'approved'});
+assert.equal(personal.owner_legal_name,'Verified Owner');assert.equal(personal.owner_kind,'owner');
+const unverified=await defaults.loadOwnerListingDefaults({id:'owner',role:'seller',seller_identity:'owner',full_name:'Unverified',kyc_status:'pending'});assert.equal(unverified.owner_legal_name,'');
+let builderDefaults=await defaults.loadOwnerListingDefaults({id:'builder',role:'seller',seller_identity:'project_owner_builder',full_name:'Personal KYC Name',kyc_status:'approved'});assert.equal(builderDefaults.owner_legal_name,'');
+previousCompany={owner_legal_name:'Reviewed Owning Company'};builderDefaults=await defaults.loadOwnerListingDefaults({id:'builder',role:'seller',seller_identity:'project_owner_builder'});assert.equal(builderDefaults.owner_legal_name,'Reviewed Owning Company');assert.ok(defaultQueries.some(call=>call.key==='eq'&&call.args[0]==='properties.seller_id'&&call.args[1]==='builder'));
+const routine={owner_kind:'owner',owner_legal_name:'Existing Legal Owner',owner_attested:true};const retained=policy.applyOwnerDefaults(routine,personal);assert.equal(retained.owner_attested,true);assert.equal(retained.owner_legal_name,'Existing Legal Owner');
+const changed=policy.applyOwnerDefaults(routine,builderDefaults);assert.equal(changed.owner_kind,'project_owner_builder');assert.equal(changed.owner_attested,false);assert.equal(changed.owner_legal_name,'Reviewed Owning Company');assert.equal(changed.owner_project_name,'');
+const newOwner=policy.applyOwnerDefaults({},personal);assert.equal(newOwner.owner_kind,'owner');assert.equal(newOwner.owner_attested,false);assert.equal(newOwner.owner_legal_name,'Verified Owner');
+modules['next/link']={default:({children,...props})=>React.createElement('a',props,children)};
+const Fields=load('src/components/property/OwnerListingFields.tsx').default;
+const sellerFields=renderToStaticMarkup(React.createElement(Fields,{value:routine,onChange(){},declaredOwnerKind:'owner'}));assert.ok(!sellerFields.includes('<select'));assert.ok(sellerFields.includes('Filled automatically from your Profile'));assert.ok(sellerFields.includes('/profile#seller-access'));
+const adminFields=renderToStaticMarkup(React.createElement(Fields,{value:{},onChange(){},isAdmin:true}));assert.ok(adminFields.includes('<select'));
 const review=load('src/lib/ownership-review.ts');
 const completeChecks={identity_matches:true,property_matches:true,owns_property:true,no_agent:true};
 assert.ok(review.ownershipReviewBlockers({},completeChecks,'Reject incomplete details').length>0);
