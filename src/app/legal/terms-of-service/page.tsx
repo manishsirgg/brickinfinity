@@ -39,6 +39,6 @@ export default function TermsPage() {
         BrickInfinity is not responsible for disputes
         between buyers and sellers.
       </p>
-    </main>
+    <section className="my-6 space-y-2"><h2 className="text-xl font-semibold">Owner-only listings</h2><p>Only actual property owners, builder companies that own the listed project, and BrickInfinity administrators may list. Agents, brokers, channel partners, contractors without ownership, and marketing intermediaries may not list on behalf of others. False ownership declarations may lead to rejection, suspension and withdrawal of listings.</p><p>Identity, document and listing review badges describe the review performed; they do not guarantee clear legal title. Buyers must conduct their own due diligence.</p></section></main>
   );
 }

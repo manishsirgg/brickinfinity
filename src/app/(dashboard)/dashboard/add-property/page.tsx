@@ -1,4 +1,6 @@
 "use client";
+import OwnerListingFields from "@/components/property/OwnerListingFields";
+import { validateOwnerFields, type OwnerFields } from "@/lib/owner-verification";
 import RentalAvailabilityFields from "@/components/property/RentalAvailabilityFields";
 import { rentalDetailsPayload, type RentalDetails } from "@/lib/property-rental-details";
 
@@ -62,6 +64,7 @@ const [selectedState,setSelectedState] = useState("");
   const [amenities,setAmenities] = useState<string[]>([]);
   
 
+  const [ownerFields, setOwnerFields] = useState<OwnerFields>({});
   const [rentalDetails, setRentalDetails] = useState<RentalDetails>({ availability_status: "available" });
   const [form,setForm] = useState({
   title:"",
@@ -259,6 +262,8 @@ async function loadLocalities(cityId:string){
 
   const validateStep=()=>{
     if(step===1){
+      const ownerError = validateOwnerFields(ownerFields, currentUserRole === "admin");
+      if (ownerError) return ownerError;
       const limitError = validatePropertyTextLimits(form.title, form.description);
       if (limitError) return limitError;
       if(hasPropertyContactDetails(form.title)) return TITLE_CONTACT_MESSAGE;
@@ -411,6 +416,8 @@ const handleSubmit = async (e:React.FormEvent)=>{
         : currentUserRole;
 
     const isAdmin = resolvedRole === "admin";
+    const ownerError = validateOwnerFields(ownerFields, isAdmin);
+    if (ownerError) throw new Error(ownerError);
     const costAndAvailability = rentalDetailsPayload({ ...rentalDetails, maintenance_charges: form.maintenance }, isRentListingType(form.listingType));
     const localityId = await ensureLocality();
     const slug = generateSlug(form.title);
@@ -431,6 +438,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
         .from("properties")
         .insert({
           seller_id: profileId,
+          ...ownerFields,
           title: form.title,
           description: form.description,
           price: priceValue,
@@ -468,7 +476,7 @@ const handleSubmit = async (e:React.FormEvent)=>{
           locality_id: localityId,
           slug,
           status: isAdmin ? "active" : "draft",
-ownership_verified: isAdmin,
+ownership_verified: false,
 verification_status: isAdmin ? "approved" : "awaiting_ownership",
 approved_at: isAdmin ? new Date().toISOString() : null
         })
@@ -656,6 +664,7 @@ approved_at: isAdmin ? new Date().toISOString() : null
             {success && <div className="badge-success mb-4">{success}</div>}
 
             <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
+              {step === 1 && <OwnerListingFields value={ownerFields} onChange={patch => setOwnerFields(prev => ({ ...prev, ...patch }))} isAdmin={currentUserRole === "admin"} />}
               {step === 3 && <RentalAvailabilityFields value={{ ...rentalDetails, maintenance_charges: form.maintenance }} onChange={patch => { const { maintenance_charges, ...rest } = patch; setRentalDetails(prev => ({ ...prev, ...rest })); if (maintenance_charges !== undefined) setForm(prev => ({ ...prev, maintenance: String(maintenance_charges ?? "") })); }} isRent={isRentListingType(form.listingType)} />}
 
               {/* STEP 1 */}

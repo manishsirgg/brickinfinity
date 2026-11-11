@@ -32,6 +32,7 @@ export default function AdminUsersPage() {
       .limit(100)
 
     if (error) {
+      alert(error.message || "Account action failed");
       console.error(error)
       setLoadingUsers(false)
       return
@@ -90,6 +91,7 @@ export default function AdminUsersPage() {
       .eq("id", user.id)
 
     if (error) {
+      alert(error.message || "Account action failed");
       console.error(error)
       setProcessing(false)
       return
@@ -137,6 +139,7 @@ export default function AdminUsersPage() {
       .eq("id", user.id)
 
     if (error) {
+      alert(error.message || "Account action failed");
       console.error(error)
       setProcessing(false)
       return
@@ -178,6 +181,7 @@ export default function AdminUsersPage() {
       .eq("id", user.id)
 
     if (error) {
+      alert(error.message || "Account action failed");
       console.error(error)
       setProcessing(false)
       return
@@ -196,6 +200,18 @@ export default function AdminUsersPage() {
     setProcessing(false)
   }
 
+  async function revokeStaffAdmin(user: any) {
+    if (processing || user.user_id === adminId) return;
+    if (!confirm("Revoke this staff member's admin access? Their listings will require review.")) return;
+    setProcessing(true);
+    try {
+      const { error } = await supabase.rpc("manage_staff_admin", { p_user_id: user.id, p_grant: false });
+      if (error) throw new Error(error.message);
+      updateLocalUser({ ...user, role: "buyer", seller_status: "basic" });
+    } catch (error) { alert(error instanceof Error ? error.message : "Staff access could not be revoked"); }
+    finally { setProcessing(false); }
+  }
+
   async function grantAdmin(user: any) {
     if (user.kyc_status !== "approved") {
       alert("User KYC must be approved first")
@@ -212,15 +228,10 @@ export default function AdminUsersPage() {
 
     setProcessing(true)
 
-    const { error } = await supabase
-      .from("users")
-      .update({
-        role: "admin",
-        seller_status: "active"
-      })
-      .eq("id", user.id)
+    const { error } = await supabase.rpc("manage_staff_admin", { p_user_id: user.id, p_grant: true })
 
     if (error) {
+      alert(error.message || "Account action failed");
       console.error(error)
       setProcessing(false)
       return
@@ -350,6 +361,7 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="flex flex-wrap gap-3">
+                {selected.role === "admin" && <button type="button" disabled={processing || selected.user_id === adminId} onClick={() => revokeStaffAdmin(selected)} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-50">Revoke staff admin</button>}
 
                 <button
                   onClick={() => router.push("/admin/kyc")}
@@ -391,12 +403,12 @@ export default function AdminUsersPage() {
                   disabled={
                     processing ||
                     selected.role === "admin" ||
-                    selected.seller_status !== "admin_review_required"
+                    selected.kyc_status !== "approved"
                   }
                   onClick={() => grantAdmin(selected)}
                   className="bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded"
                 >
-                  Approve Admin Access
+                  Grant Staff Admin Access
                 </button>
 
               </div>

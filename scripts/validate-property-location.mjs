@@ -82,7 +82,7 @@ for (const [filters, count, label] of [
   [{ state: "madhya pradesh", city: "chhatarpur" }, 14, "Chhatarpur"],
 ]) {
   const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve(filters) }));
-  assert.ok(html.includes(`${count} verified properties found.`));
+  assert.ok(html.includes(`${count} properties found.`));
   assert.ok(html.includes(`Properties in ${label}`));
   assert.ok(!html.includes('data-property="excluded"'));
   assert.ok(html.includes("Next"), "all matching listings must be reachable");
@@ -91,7 +91,7 @@ const secondPage = renderToStaticMarkup(await Page({ searchParams: { state_id: "
 assert.ok(secondPage.includes('data-property="road-0"'));
 assert.ok(secondPage.includes("state_id=mp&amp;city_id=chh&amp;locality_id=road&amp;page=1"));
 const unknown = renderToStaticMarkup(await Page({ searchParams: { locality_id: "unknown" } }));
-assert.ok(unknown.includes("0 verified properties found."));
+assert.ok(unknown.includes("0 properties found."));
 assert.ok(!unknown.includes("data-property="));
 assert.ok(!calls.some(call => call[1] === "eq" && call[2] === "listing_type"), "location browsing must include sale and rent");
 console.log("Location result checks passed: state, city, locality, exact names, pagination, unknown locations, and sale/rent inclusion.");
@@ -117,7 +117,7 @@ const filtered = renderToStaticMarkup(await Page({ searchParams: {
   state_id: "mp", min_price: "2000", max_price: "6000", min_area: "200", max_area: "600",
   bedrooms: "2", bathrooms: "1", furnishing: "Fully Furnished", amenities: ["Gym", "Power Backup"], sort: "price_desc",
 } }));
-assert.ok(filtered.includes("3 verified properties found."));
+assert.ok(filtered.includes("3 properties found."));
 assert.ok(filtered.indexOf('data-property="road-5"') < filtered.indexOf('data-property="road-3"'));
 assert.ok(filtered.indexOf('data-property="road-3"') < filtered.indexOf('data-property="road-1"'));
 for (const sort of ["price_asc", "price_desc", "area_asc", "area_desc", "newest", "updated"]) {
@@ -135,7 +135,7 @@ modules["@/app/properties/page"] = { default: Page };
 for (const route of ["buy", "rent", "properties/buy", "properties/rent"]) {
   const Wrapper = load(`src/app/${route}/page.tsx`).default;
   const html = renderToStaticMarkup(await Wrapper({ searchParams: Promise.resolve({ state_id: "mp", max_price: "2500", sort: "price_asc" }) }));
-  assert.ok(html.includes("1 verified properties found."));
+  assert.ok(html.includes("1 properties found."));
   assert.ok(html.includes(`data-property="${route.endsWith("buy") ? "road-0" : "road-1"}"`));
 }
 console.log("Search filters and sorting checks passed: combined filters, repeated amenities, ordering before pagination, invalid ranges and shared Buy/Rent routes.");
@@ -144,7 +144,7 @@ fixtures.properties.push({ ...fixtures.properties[0], id: "closed-property", ava
 fixtures.properties[0].availability_status = "available";
 fixtures.properties[0].availability_confirmed_at = new Date().toISOString();
 const available = renderToStaticMarkup(await Page({ searchParams: { state_id: "mp", availability: "available", confirmed_recent: "1" } }));
-assert.ok(available.includes("1 verified properties found."));
+assert.ok(available.includes("1 properties found."));
 assert.ok(available.includes('data-property="road-0"'));
 assert.ok(!available.includes('data-property="closed-property"'));
 console.log("Closed availability exclusion and recent-confirmation filter checks passed.");

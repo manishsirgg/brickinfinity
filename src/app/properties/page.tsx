@@ -232,7 +232,7 @@ export default async function PropertiesSearchPage({
   let query = supabase
     .from("properties")
     .select(
-      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,availability_status,available_from,availability_confirmed_at,hourly_rate,daily_rate,monthly_rate,${location.state ? "cities!inner(name)" : "cities(name)"},localities(name),property_images(image_url,sort_order)`,
+      `id,slug,title,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,ownership_verified,listing_source,ownership_review_status,ownership_reviewed_at,identity_reviewed_at,listing_reviewed_at,is_featured,featured_until,featured_rank,featured_plan_key,views_count,created_at,availability_status,available_from,availability_confirmed_at,hourly_rate,daily_rate,monthly_rate,${location.state ? "cities!inner(name)" : "cities(name)"},localities(name),property_images(image_url,sort_order)`,
       { count: "exact" },
     )
     .eq("status", "active")
@@ -357,7 +357,7 @@ export default async function PropertiesSearchPage({
         </aside>
         <section aria-label="Property results" className="min-w-0 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
-            <p className="text-sm text-muted">{totalMatches} verified properties found.</p>
+            <p className="text-sm text-muted">{totalMatches} properties found.</p>
             <PropertySortControl key={JSON.stringify(resolvedSearchParams)} values={{ ...resolvedSearchParams, sort }} />
           </div>
           <p className="text-xs text-slate-500">Featured listings are labeled; your selected sort order is preserved.</p>

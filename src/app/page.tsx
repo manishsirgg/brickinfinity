@@ -31,6 +31,7 @@ export default async function HomePage() {
       featured_rank,
       featured_plan_key,
       ownership_verified,
+      listing_source, ownership_review_status, ownership_reviewed_at, identity_reviewed_at, listing_reviewed_at,
       cities(name),
       localities(name),
       property_images(image_url,sort_order)
@@ -127,7 +128,7 @@ export default async function HomePage() {
 
           <div className="space-y-8">
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] text-[var(--color-dark)]">
-              Verified Real Estate
+              Owner-only Real Estate
               <span className="block text-[var(--color-primary)] mt-2">
                 Built for Scale & Trust
               </span>
@@ -190,7 +191,7 @@ export default async function HomePage() {
 
           <SectionHeader
             title="Latest Listings"
-            subtitle="Recently added verified homes."
+            subtitle="Recently added reviewed listings."
             href="/properties/latest"
             linkText="Browse More →"
           />
@@ -208,7 +209,7 @@ export default async function HomePage() {
 
           <SectionHeader
             title="Buy Properties"
-            subtitle="Explore verified sale listings ready for purchase."
+            subtitle="Explore reviewed properties offered for sale."
             href="/properties/buy"
             linkText="Browse More →"
           />
@@ -225,7 +226,7 @@ export default async function HomePage() {
 
           <SectionHeader
             title="Rent Properties"
-            subtitle="Discover verified rentals across supported locations."
+            subtitle="Discover reviewed rentals across supported locations."
             href="/properties/rent"
             linkText="Browse More →"
           />

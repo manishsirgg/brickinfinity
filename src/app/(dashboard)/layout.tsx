@@ -25,6 +25,8 @@ export default async function DashboardLayout({
     redirect("/profile?upgrade=seller");
   }
 
+  if (user.role !== USER_ROLES.ADMIN && (!user.ownerDeclared || user.sellerStatus !== "active")) redirect("/profile?upgrade=owner");
+
   /* KYC STATUS */
   if (user.role === USER_ROLES.ADMIN) {
     return <>{children}</>;

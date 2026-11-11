@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import ReviewEvidenceLinks from "@/components/admin/ReviewEvidenceLinks";
+import { validateOwnerFields } from "@/lib/owner-verification";
 import { createClient } from "@/lib/supabase/client"
-import { logAction } from "@/lib/moderation/logAction"
 
 const supabase = createClient()
 
@@ -14,6 +15,9 @@ export default function OwnershipVerificationPage(){
 
   const [loadingQueue,setLoadingQueue] = useState(true)
   const [loadingDoc,setLoadingDoc] = useState(false)
+  const [reviewChecks,setReviewChecks] = useState<Record<string,boolean>>({});
+  const [reviewNote,setReviewNote] = useState("");
+  useEffect(() => { setReviewChecks({}); setReviewNote(""); }, [selected?.id]);
   const [processing,setProcessing] = useState(false)
 
   /* ================= FETCH QUEUE ================= */
@@ -47,7 +51,7 @@ export default function OwnershipVerificationPage(){
             price,
             listing_type,
             status,
-            ownership_verified,
+            ownership_verified,owner_kind,owner_legal_name,owner_project_name,owner_attested,
             cities(name),
             localities(name)
           )
@@ -56,8 +60,7 @@ export default function OwnershipVerificationPage(){
         .eq("status","pending")
         .eq("properties.status","pending")
         .eq("properties.ownership_verified",false)
-        .neq("users.role", "admin")
-        .order("created_at",{ascending:false})
+          .order("created_at",{ascending:false})
         .limit(50)
 
     if(error){
@@ -120,109 +123,16 @@ export default function OwnershipVerificationPage(){
 
   /* ================= APPROVE ================= */
 
-  async function approve(doc:any){
-
-    if(processing) return
-    setProcessing(true)
-
-    try{
-
-      const { data } = await supabase.auth.getUser()
-      const adminId = data.user?.id
-
-      if(!adminId) throw new Error("Session expired")
-
-      await supabase
-        .from("documents")
-        .update({
-          status:"approved",
-          reviewed_at:new Date().toISOString(),
-          reviewed_by:adminId
-        })
-        .eq("id",doc.id)
-
-      await supabase
-        .from("properties")
-        .update({
-          ownership_verified:true,
-          verification_status:"ownership_approved",
-          status:"pending",
-          rejection_reason:null
-        })
-        .eq("id", doc.property_id)
-
-      await logAction(
-        adminId,
-        "property",
-        doc.property_id,
-        "approve_ownership",
-        doc.document_subtype || "ownership"
-      )
-
-      setSelected(null)
-      await fetchQueue()
-
-    }catch(err:any){
-      alert(err.message || "Approval failed")
-    }
-
-    setProcessing(false)
-  }
-
-  /* ================= REJECT ================= */
-
-  async function reject(doc:any){
-
-    const reason = prompt("Enter rejection reason")
-    if(!reason) return
-
-    if(processing) return
-    setProcessing(true)
-
-    try{
-
-      const { data } = await supabase.auth.getUser()
-      const adminId = data.user?.id
-
-      if(!adminId) throw new Error("Session expired")
-
-      await supabase
-        .from("documents")
-        .update({
-          status:"rejected",
-          rejection_reason:reason,
-          reviewed_at:new Date().toISOString(),
-          reviewed_by:adminId
-        })
-        .eq("id",doc.id)
-
-      await supabase
-        .from("properties")
-        .update({
-          status:"rejected",
-          ownership_verified:false,
-          verification_status:"ownership_rejected",
-          rejection_reason:reason,
-          approved_at:null
-        })
-        .eq("id", doc.property_id)
-
-      await logAction(
-        adminId,
-        "property",
-        doc.property_id,
-        "reject_ownership",
-        reason
-      )
-
-      setSelected(null)
-      await fetchQueue()
-
-    }catch(err:any){
-      alert(err.message || "Reject failed")
-    }
-
-    setProcessing(false)
+  async function review(doc: any, approve: boolean) {
+    if (processing) return;
+    if (!reviewNote.trim()) { alert("Record a review note or rejection reason."); return; }
+    setProcessing(true);
+    try {
+      const { error } = await supabase.rpc("review_property_ownership", { p_document_id: doc.id, p_approve: approve, p_checks: reviewChecks, p_note: reviewNote.trim() });
+      if (error) throw new Error(error.message);
+      setSelected(null); await fetchQueue();
+    } catch (error) { alert(error instanceof Error ? error.message : "Ownership review failed"); }
+    finally { setProcessing(false); }
   }
 
   /* ================= UI ================= */
@@ -352,11 +262,18 @@ export default function OwnershipVerificationPage(){
                 </p>
               )}
 
+              <ReviewEvidenceLinks key={selected.id} userId={selected.user_id} propertyId={selected.property_id} />
+              <div className="mb-4 space-y-3 rounded-lg border p-4">
+                <p>Legal owner: {selected.properties?.owner_legal_name || "Not provided — owner must update listing"}</p>
+                <p>Category: {selected.properties?.owner_kind || "Not declared"} · Project: {selected.properties?.owner_project_name || "—"}</p>
+                {Object.entries({ identity_matches:"The identity evidence matches the legal owner / owning company", property_matches:"The evidence identifies this exact property or project", owns_property:"The applicant / builder company actually owns the property", no_agent:"This is not an agent, broker, contractor or marketing-intermediary listing", ...(selected.properties?.owner_kind === "project_owner_builder" ? { company_owns_project:"Company and project ownership evidence reviewed" } : {}) }).map(([key,label]) => <label key={key} className="flex gap-2 text-sm"><input type="checkbox" checked={!!reviewChecks[key]} onChange={e=>setReviewChecks(prev=>({...prev,[key]:e.target.checked}))}/>{label}</label>)}
+                <label className="block text-sm">Review note / rejection reason<textarea className="mt-1 w-full rounded border p-2" value={reviewNote} onChange={e=>setReviewNote(e.target.value)}/></label>
+              </div>
               <div className="flex gap-4">
 
                 <button
-                  disabled={processing}
-                  onClick={()=>approve(selected)}
+                  disabled={processing || Boolean(validateOwnerFields(selected.properties || {})) || !reviewNote.trim() || !["identity_matches","property_matches","owns_property","no_agent",...(selected.properties?.owner_kind === "project_owner_builder" ? ["company_owns_project"] : [])].every(key => reviewChecks[key])}
+                  onClick={()=>review(selected,true)}
                   className="bg-green-600 text-white px-4 py-2 rounded"
                 >
                   Approve Ownership
@@ -364,7 +281,7 @@ export default function OwnershipVerificationPage(){
 
                 <button
                   disabled={processing}
-                  onClick={()=>reject(selected)}
+                  onClick={()=>review(selected,false)}
                   className="bg-red-600 text-white px-4 py-2 rounded"
                 >
                   Reject

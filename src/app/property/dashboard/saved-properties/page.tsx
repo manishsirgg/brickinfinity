@@ -1,3 +1,4 @@
+import VerificationBadges from "@/components/property/VerificationBadges";
 import PropertyAvailability from "@/components/property/PropertyAvailability";
 import { createClient } from "@/lib/supabase/server";
 import { getCoverImage } from "@/lib/property-images";
@@ -29,14 +30,13 @@ export default async function SavedPropertiesPage() {
           price,
           status,
           availability_status,available_from,availability_confirmed_at,
-          ownership_verified,
+          ownership_verified,listing_source,ownership_review_status,ownership_reviewed_at,identity_reviewed_at,listing_reviewed_at,
           deleted_at,
           property_images(image_url,sort_order)
         )
       `)
       .eq("user_id", session.user.id)
       .eq("properties.status", "active")
-      .eq("properties.ownership_verified", true)
       .is("properties.deleted_at", null);
 
   const properties =
@@ -118,6 +118,7 @@ export default async function SavedPropertiesPage() {
 
               <div className="p-4 space-y-1">
                 <PropertyAvailability property={p} />
+                <VerificationBadges property={p} />
 
                 <p className="text-sm text-gray-500">
                   {p.property_type}

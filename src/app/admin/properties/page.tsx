@@ -43,9 +43,7 @@ export default function AdminPropertiesPage() {
         )
       `)
       .eq("status", "pending")
-      .eq("ownership_verified", true)
-      .in("verification_status", ["ownership_approved", "approved"])
-      .neq("users.role", "admin")
+      .or("and(ownership_verified.eq.true,verification_status.in.(ownership_approved,approved)),listing_source.eq.brickinfinity_admin")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
 

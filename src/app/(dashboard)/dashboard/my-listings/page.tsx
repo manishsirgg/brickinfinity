@@ -2,6 +2,8 @@
 
 import ListingAvailabilityControl from "@/components/property/ListingAvailabilityControl";
 import PropertyViews from "@/components/property/PropertyViews";
+import VerificationBadges from "@/components/property/VerificationBadges";
+import type { VerificationFields } from "@/lib/owner-verification";
 
 import { getCoverImage } from "@/lib/property-images";
 import { useEffect, useState, useCallback } from "react";
@@ -22,7 +24,7 @@ export default function MyListingsPage() {
   const router = useRouter();
 
   const [loading,setLoading] = useState(true);
-  type ListingProperty = {
+  type ListingProperty = VerificationFields & {
   id: string;
   slug: string;
   property_type: string;
@@ -115,6 +117,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
             featured_last_order_id,
             deleted_at,
             views_count,
+            listing_source,ownership_review_status,ownership_reviewed_at,identity_reviewed_at,listing_reviewed_at,
             availability_status,available_from,availability_confirmed_at,
             created_at,
             property_images(image_url,sort_order)
@@ -387,6 +390,7 @@ const [properties,setProperties] = useState<ListingProperty[]>([]);
                 </span>
 
                 <PropertyViews count={property.views_count} />
+                <VerificationBadges property={property} />
                 <ListingAvailabilityControl property={property} />
 
                 <p className="text-xs text-muted">

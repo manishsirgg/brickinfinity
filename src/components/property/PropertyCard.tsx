@@ -1,12 +1,14 @@
 "use client"
 
 import { getCoverImage } from "@/lib/property-images";
+import VerificationBadges from "./VerificationBadges"
+import type { VerificationFields } from "@/lib/owner-verification"
 import PropertyViews from "@/components/property/PropertyViews"
 import PropertyAvailability from "./PropertyAvailability"
 import Link from "next/link"
 import { isPropertyFeaturedActive } from "@/lib/property-featured"
 
-type PropertyCardProperty = {
+type PropertyCardProperty = VerificationFields & {
   availability_status?: string
   available_from?: string | null
   availability_confirmed_at?: string | null
@@ -135,11 +137,6 @@ export default function PropertyCard({ property }: Props) {
             </span>
           )}
 
-          {property?.ownership_verified && (
-            <span className="bg-green-600 text-white text-xs px-3 py-1 rounded-full">
-              Verified
-            </span>
-          )}
 
           {isNew && (
             <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
@@ -157,6 +154,7 @@ export default function PropertyCard({ property }: Props) {
 
       <div className="p-4 md:p-5 space-y-3">
         <PropertyViews count={property.views_count} />
+        <VerificationBadges property={property} />
         <PropertyAvailability property={property} />
         <div>
           <p className="text-xl font-bold text-primary">

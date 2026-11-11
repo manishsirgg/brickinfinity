@@ -17,6 +17,8 @@ function load(path) {
 }
 const viewsModule = load("src/components/property/PropertyViews.tsx");
 modules["@/components/property/PropertyViews"] = viewsModule;
+modules["@/lib/owner-verification"] = load("src/lib/owner-verification.ts");
+modules["./VerificationBadges"] = load("src/components/property/VerificationBadges.tsx");
 modules["./PropertyAvailability"] = { default: () => null };
 modules["@/lib/property-images"] = load("src/lib/property-images.ts");
 modules["@/lib/property-featured"] = { isPropertyFeaturedActive: () => false };

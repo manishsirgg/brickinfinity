@@ -20,7 +20,7 @@ export default async function FeaturedPropertiesPage({ searchParams = {} }: Prop
 
   const { data, error } = await supabase
     .from("properties")
-    .select(`id,slug,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,created_at,views_count,ownership_verified,is_featured,featured_until,featured_rank,featured_plan_key,availability_status,available_from,availability_confirmed_at,hourly_rate,daily_rate,monthly_rate,cities(name),localities(name),property_images(image_url,sort_order)`)
+    .select(`id,slug,price,listing_type,property_type,bedrooms,bathrooms,built_up_area,amenities,created_at,views_count,ownership_verified,listing_source,ownership_review_status,ownership_reviewed_at,identity_reviewed_at,listing_reviewed_at,is_featured,featured_until,featured_rank,featured_plan_key,availability_status,available_from,availability_confirmed_at,hourly_rate,daily_rate,monthly_rate,cities(name),localities(name),property_images(image_url,sort_order)`)
     .eq("status", "active")
 .in("availability_status", ["unknown", "available", "available_from"])
     .eq("verification_status", "approved")

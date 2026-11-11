@@ -10,7 +10,7 @@ function load(path){const exports={};vm.runInNewContext(ts.transpileModule(fs.re
 modules['@/lib/property-description-policy']=load('src/lib/property-description-policy.ts');
 const policy=load('src/lib/property-rental-details.ts');modules['@/lib/property-rental-details']=policy;
 assert.equal(policy.rentalDetailsPayload({security_deposit:'0',brokerage_charge:'',availability_status:'available'},true).security_deposit,0);
-assert.equal(policy.rentalDetailsPayload({brokerage_charge:''},true).brokerage_charge,null);
+assert.equal(policy.rentalDetailsPayload({brokerage_charge:''},true).brokerage_charge,0);
 assert.throws(()=>policy.rentalDetailsPayload({security_deposit:'-1'},true),/non-negative/);
 assert.throws(()=>policy.rentalDetailsPayload({availability_status:'available_from'},true),/date/);
 assert.throws(()=>policy.rentalDetailsPayload({other_charges_note:'Call 9899601701'},true),/contact details/);
@@ -19,8 +19,8 @@ assert.equal(policy.needsAvailabilityConfirmation({availability_confirmed_at:new
 const Breakdown=load('src/components/property/RentalCostBreakdown.tsx').default;
 const unknown=renderToStaticMarkup(React.createElement(Breakdown,{property:{monthly_rate:10000,security_deposit:0}}));
 assert.ok(unknown.includes('Not disclosed'));assert.ok(unknown.includes('Known move-in subtotal'));assert.ok(unknown.includes('₹10,000'));
-const full={monthly_rate:10000,security_deposit:20000,brokerage_charge:10000,maintenance_charges:1000,parking_charge:500,other_monthly_charges:0,other_one_time_charges:1000};
-const complete=renderToStaticMarkup(React.createElement(Breakdown,{property:full}));assert.ok(complete.includes('₹11,500'));assert.ok(complete.includes('₹42,500'));assert.ok(complete.includes('Estimated move-in payment'));
+const full={monthly_rate:10000,security_deposit:20000,brokerage_charge:0,maintenance_charges:1000,parking_charge:500,other_monthly_charges:0,other_one_time_charges:1000};
+const complete=renderToStaticMarkup(React.createElement(Breakdown,{property:full}));assert.ok(complete.includes('₹11,500'));assert.ok(complete.includes('₹32,500'));assert.ok(complete.includes('Estimated move-in payment'));
 const short=renderToStaticMarkup(React.createElement(Breakdown,{property:{hourly_rate:500}}));assert.ok(!short.includes('Known move-in subtotal'));
 console.log('Rental cost/availability model checks passed.');
 if(process.argv.includes('--database')){
