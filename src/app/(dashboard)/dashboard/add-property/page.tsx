@@ -1,5 +1,8 @@
 "use client";
 
+import TextLimitCounter from "@/components/property/TextLimitCounter";
+import { validatePropertyTextLimits, countTitleCharacters, countDescriptionWords } from "@/lib/property-text-limits";
+
 import { hasPropertyContactDetails, DESCRIPTION_CONTACT_MESSAGE, TITLE_CONTACT_MESSAGE } from "@/lib/property-description-policy";
 
 import { useEffect, useState } from "react";
@@ -253,6 +256,8 @@ async function loadLocalities(cityId:string){
 
   const validateStep=()=>{
     if(step===1){
+      const limitError = validatePropertyTextLimits(form.title, form.description);
+      if (limitError) return limitError;
       if(hasPropertyContactDetails(form.title)) return TITLE_CONTACT_MESSAGE;
       if(form.title.length<10) return "Title must be at least 10 characters.";
       if(!form.description) return "Description required.";
@@ -364,6 +369,8 @@ const handleSubmit = async (e:React.FormEvent)=>{
 
   e.preventDefault();
 
+  const limitError = validatePropertyTextLimits(form.title, form.description);
+  if (limitError) { setError(limitError); return; }
   if (hasPropertyContactDetails(form.title)) { setError(TITLE_CONTACT_MESSAGE); return; }
   if (hasPropertyContactDetails(form.description)) { setError(DESCRIPTION_CONTACT_MESSAGE); return; }
 
@@ -657,14 +664,15 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
                     <input
                       className="input-premium"
-                      aria-describedby="title-contact-hint"
-                      aria-invalid={hasPropertyContactDetails(form.title)}
+                      aria-describedby="title-contact-hint title-limit"
+                      aria-invalid={hasPropertyContactDetails(form.title) || countTitleCharacters(form.title) > 100}
                       value={form.title}
                       onChange={(e)=>
                         setForm({...form,title:e.target.value})
                       }
                     />
-                    <p id="title-contact-hint" className="mt-2 text-sm text-slate-600">Keep contact details out of the title. Buyers can use Contact Seller.</p>
+                    <TextLimitCounter id="title-limit" value={form.title || ""} kind="title" />
+          <p id="title-contact-hint" className="mt-2 text-sm text-slate-600">Keep contact details out of the title. Buyers can use Contact Seller.</p>
                   </div>
 
                   <div>
@@ -672,14 +680,15 @@ approved_at: isAdmin ? new Date().toISOString() : null
 
                     <textarea
                       className="textarea-premium"
-                      aria-describedby="description-contact-hint"
-                      aria-invalid={hasPropertyContactDetails(form.description)}
+                      aria-describedby="description-contact-hint description-limit"
+                      aria-invalid={hasPropertyContactDetails(form.description) || countDescriptionWords(form.description) > 3000}
                       value={form.description}
                       onChange={(e)=>
                         setForm({...form,description:e.target.value})
                       }
                     />
-                    <p id="description-contact-hint" className="mt-2 text-sm text-slate-600">Do not include phone numbers, email addresses, websites or social handles. Use the Contact Seller panel.</p>
+                    <TextLimitCounter id="description-limit" value={form.description || ""} kind="description" />
+          <p id="description-contact-hint" className="mt-2 text-sm text-slate-600">Do not include phone numbers, email addresses, websites or social handles. Use the Contact Seller panel.</p>
                   </div>
 
                   {isSaleListingType(form.listingType) ? (

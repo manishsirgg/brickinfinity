@@ -1,3 +1,4 @@
+import BackToTop from "@/components/BackToTop";
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Navbar from "@/components/Navbar";
@@ -133,6 +134,7 @@ export default function RootLayout({
 
         {/* FLOATING WHATSAPP CTA */}
         <WhatsAppFloatingButton />
+        <BackToTop />
 
         {/* FOOTER */}
         <Footer />
