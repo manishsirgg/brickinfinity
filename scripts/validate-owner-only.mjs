@@ -439,6 +439,59 @@ assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queu
 await db.exec('RESET ROLE');
 console.log('Explicit review workflow passed: structured rejection and notification, private history, unauthorized access blocked, draft details/media/uploads stay rejected, required changes enforced, ownership/publication routing, fresh approvals and repeatability.');
 
+// Audit the requested complete lifecycle with a fresh auth UUID and generated profile UUID.
+ids.lifecycleAuth='00000000-0000-0000-0000-000000000110';
+await as('lifecycleAuth');
+const freshProfile=(await db.query("INSERT INTO public.users(user_id,full_name,role,kyc_status,seller_status) VALUES($1,'Lifecycle Owner','buyer','not_submitted','basic') RETURNING id,role,kyc_status,seller_status",[ids.lifecycleAuth])).rows[0];
+assert.equal(freshProfile.role,'buyer');assert.equal(freshProfile.seller_status,'basic');assert.notEqual(freshProfile.id,ids.lifecycleAuth);
+const lifecycleProperty='00000000-0000-0000-0000-000000000111';
+await assert.rejects(db.query(insert,[lifecycleProperty,freshProfile.id]),/Only approved actual owners/);
+await db.query("SELECT public.declare_owner_identity('owner',true)");
+assert.equal((await db.query('SELECT role FROM public.users WHERE id=$1',[freshProfile.id])).rows[0].role,'buyer');
+const identityIds={};
+for(const type of ['aadhar','selfie']){
+ const path=ids.lifecycleAuth+'/'+type+'/original';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[path]);
+ identityIds[type]=(await db.query("INSERT INTO public.documents(user_id,document_type,document_url) VALUES($1,$2,$3) RETURNING id",[freshProfile.id,type,path])).rows[0].id;
+}
+await as('admin');await db.query('SELECT public.review_identity_document($1,false,$2)',[identityIds.aadhar,'Upload a legible government ID.']);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT role FROM public.users WHERE id=$1',[freshProfile.id])).rows[0].role,'buyer');
+await as('lifecycleAuth');
+const revisedIdPath=ids.lifecycleAuth+'/aadhar/revised';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[revisedIdPath]);
+await db.query("UPDATE public.documents SET document_url=$1,status='pending' WHERE id=$2",[revisedIdPath,identityIds.aadhar]);
+await as('admin');await db.query('SELECT public.review_identity_document($1,true,$2)',[identityIds.aadhar,'Government ID reviewed.']);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT role FROM public.users WHERE id=$1',[freshProfile.id])).rows[0].role,'buyer');
+await as('admin');await db.query('SELECT public.review_identity_document($1,true,$2)',[identityIds.selfie,'Selfie matches government ID.']);
+await db.exec('RESET ROLE');const eligible=(await db.query('SELECT role,kyc_status,seller_status FROM public.users WHERE id=$1',[freshProfile.id])).rows[0];assert.equal(eligible.role,'seller');assert.equal(eligible.kyc_status,'approved');assert.equal(eligible.seller_status,'active');
+// No separate Admin Users activation was called.
+await as('lifecycleAuth');await db.query(insert,[lifecycleProperty,freshProfile.id]);
+let proofPath=lifecycleProperty+'/original.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[proofPath]);
+let proof=(await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3) RETURNING id",[freshProfile.id,lifecycleProperty,proofPath])).rows[0].id;
+async function publicLifecycleVisibility(expected){await as(null);assert.equal((await db.query('SELECT id FROM public.properties WHERE id=$1',[lifecycleProperty])).rows.length,expected);}
+await publicLifecycleVisibility(0);
+await as('admin');await assert.rejects(db.query('SELECT public.admin_publish_property($1)',[lifecycleProperty]),/reviewed ownership/);
+await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5,$6)',[lifecycleProperty,'ownership','Proof does not identify the property','documents','Upload ownership proof identifying this address.',proof]);
+await as('lifecycleAuth');proofPath=lifecycleProperty+'/corrected.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[proofPath]);
+proof=(await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3) RETURNING id",[freshProfile.id,lifecycleProperty,proofPath])).rows[0].id;
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[lifecycleProperty])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[lifecycleProperty])).rows[0].queue,'ownership');
+await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[proof,checks,'Legal owner and exact property ownership matched.']);
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[lifecycleProperty])).rows[0].status,'pending');
+await publicLifecycleVisibility(0);
+await as('admin');await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5)',[lifecycleProperty,'listing','Description needs clarification','details','Correct the room and floor details.']);
+await as('lifecycleAuth');await db.query("UPDATE public.properties SET description='Corrected room and floor details.' WHERE id=$1",[lifecycleProperty]);
+assert.equal((await db.query('SELECT status FROM public.properties WHERE id=$1',[lifecycleProperty])).rows[0].status,'rejected');
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[lifecycleProperty])).rows[0].queue,'listing');
+await publicLifecycleVisibility(0);
+await as('admin');await db.query('SELECT public.admin_publish_property($1)',[lifecycleProperty]);
+await publicLifecycleVisibility(1);
+await db.exec('RESET ROLE');const published=(await db.query('SELECT status,verification_status,ownership_verified,ownership_review_status,listing_reviewed_at FROM public.properties WHERE id=$1',[lifecycleProperty])).rows[0];assert.equal(published.status,'active');assert.equal(published.verification_status,'approved');assert.equal(published.ownership_verified,true);assert.ok(published.listing_reviewed_at);
+console.log('Complete lifecycle audit passed: new buyer → ID/selfie/declaration → KYC rejection/resubmission → automatic seller activation → ownership rejection/correction/resubmission/approval → editorial rejection/draft/resubmission → publication. Anonymous access stays blocked until publication; no Users-tab activation required.');
+
+const lifecycleAuditSql=fs.readFileSync('supabase/diagnostics/seller-review-flow-audit.sql','utf8');
+await db.exec('BEGIN READ ONLY');const lifecycleAudit=JSON.parse((await db.query(lifecycleAuditSql)).rows[0].seller_review_flow_audit);await db.exec('ROLLBACK');
+for(const key of ['old_verification_triggers_retired','ownership_version_constraint_removed','checked_review_routines_present','ownership_approval_waits_for_resubmission','public_visibility_restrictive_policies_present','explicit_draft_guard_enabled','review_and_evidence_rls_enabled','evidence_buckets_private','no_drafts_in_review_queues']) assert.equal(lifecycleAudit.critical_checks[key],true,key);
+assert.ok(!JSON.stringify(lifecycleAudit).includes('document_url'));assert.ok(!JSON.stringify(lifecycleAudit).includes('document_path'));
+console.log('Live lifecycle audit SQL validated in a read-only transaction; aggregate counts/configuration only.');
 const diagnosticSql=fs.readFileSync('supabase/diagnostics/ownership-review-reset.sql','utf8').replace('f0aeee08-6dce-44ae-9e3c-f467dc6fb059',ids.reviewedProperty);
 await db.exec('BEGIN READ ONLY');const diagnostic=JSON.parse((await db.query(diagnosticSql)).rows[0].ownership_review_diagnostic);await db.exec('ROLLBACK');
 assert.equal(diagnostic.property.id,ids.reviewedProperty);assert.equal(diagnostic.actual_listing_seller.profile_id,ids.fresh);assert.ok(diagnostic.review_related_triggers.some(t=>t.function==='brick_private.evidence_resubmitted'));assert.ok(diagnostic.installed_review_routines.some(f=>f.function==='public.review_property_ownership'));
