@@ -565,6 +565,114 @@ await as(null);assert.equal((await db.query('SELECT id FROM public.properties WH
 await db.exec('RESET ROLE');await db.exec(consolidatedKyc);
 console.log('Consolidated KYC passed: one bundled entry/decision, owner-builder declaration, missing/stale evidence blocked, per-file API disabled, atomic notification/audit, rejection and resubmission, file retention, single seller activation and separate builder ownership/publication gates.');
 
+// Controlled retention: SQL planning/claims + simulated Storage API metadata removal.
+await db.exec('RESET ROLE');await db.exec('CREATE ROLE service_role BYPASSRLS; GRANT USAGE ON SCHEMA public,storage TO service_role; GRANT SELECT,DELETE ON storage.objects TO service_role; ALTER TABLE storage.objects ADD COLUMN metadata jsonb DEFAULT \'{}\';');
+// Legacy reviewed evidence without an old audit/version record must not become
+// an orphan merely because the current document pointer changes later.
+const uncertainLegacy='retention/unknown-reviewed.pdf';
+await db.query("INSERT INTO public.users(id,user_id,full_name) VALUES('00000000-0000-0000-0000-000000000115','00000000-0000-0000-0000-000000000115','Legacy fixture')");
+await db.query("INSERT INTO storage.objects(bucket_id,name,created_at) VALUES('identity-documents',$1,now()-interval '300 days')",[uncertainLegacy]);
+const uncertainDoc=(await db.query("INSERT INTO public.documents(user_id,document_type,document_url,status) VALUES('00000000-0000-0000-0000-000000000115','passport',$1,'approved') RETURNING id",[uncertainLegacy])).rows[0].id;
+const retentionMigration=fs.readFileSync('supabase/migrations/20261112_document_retention.sql','utf8');
+await db.exec(retentionMigration);await db.exec(retentionMigration);
+await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents','retention/unknown-reviewed-new.pdf')");await db.query("UPDATE public.documents SET document_url='retention/unknown-reviewed-new.pdf',status='pending' WHERE id=$1",[uncertainDoc]);
+assert.equal((await db.query('SELECT reviewed_days FROM public.document_retention_policy')).rows[0].reviewed_days,null);
+await db.exec("UPDATE public.document_retention_policy SET created_at=now()-interval '30 days'"); // Advance the policy clock in this isolated fixture.
+const retentionBucket='identity-documents',orphanPath='retention/orphan.pdf',versionPath='retention/superseded.pdf',legacyPath='retention/legacy.pdf',heldPath='retention/held.pdf',quotedPath='retention/quote"file.pdf';
+for(const [path,days] of [[orphanPath,3],[versionPath,8],[legacyPath,40],[heldPath,5],[quotedPath,3],['retention/recent.pdf',1]]) await db.query("INSERT INTO storage.objects(bucket_id,name,created_at,metadata) VALUES('identity-documents',$1,now()-make_interval(days=>$2),'{\"size\":1234}')",[path,days]);
+await db.query("INSERT INTO public.document_versions(document_id,document_url,uploaded_by) VALUES($1,$2,$3),($1,$4,$3)",[appIdDoc,versionPath,applicant,legacyPath]);
+const historicalIdPath=ids.applicantAuth+'/aadhar/first';await db.query("UPDATE storage.objects SET created_at=now()-interval '200 days' WHERE bucket_id='identity-documents' AND name=$1",[historicalIdPath]);
+await db.query("UPDATE storage.objects SET created_at=now()-interval '200 days' WHERE name=$1",[appIdPath]);
+await db.query("INSERT INTO public.properties(id,seller_id,title,owner_kind,owner_legal_name,owner_project_name,owner_attested) VALUES('00000000-0000-0000-0000-000000000114',$1,'Pending retention fixture','project_owner_builder','Owning Company','Owned Project',true)",[applicant]);
+const pendingPath='00000000-0000-0000-0000-000000000114/pending.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name,created_at) VALUES('ownership-documents',$1,now()-interval '200 days')",[pendingPath]);
+await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url,status) VALUES($1,'00000000-0000-0000-0000-000000000114','ownership',$2,'pending')",[applicant,pendingPath]);
+await as('applicantAuth');await assert.rejects(db.query('SELECT public.claim_document_retention()'),/permission denied/);await assert.rejects(db.query('SELECT public.preview_document_retention()'),/permission denied/);
+assert.equal((await db.query('SELECT * FROM public.document_retention_files')).rows.length,0);
+await db.query("DELETE FROM storage.objects WHERE bucket_id='ownership-documents' AND name=$1",[pendingPath]);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT count(*)::int AS n FROM storage.objects WHERE name=$1',[pendingPath])).rows[0].n,1);
+// Archive one reviewed property so its old proof can expire after explicit closure.
+await db.query('UPDATE public.properties SET deleted_at=now() WHERE id=$1',[builderProperty]);
+await db.query("UPDATE storage.objects SET created_at=now()-interval '200 days' WHERE name=$1",[builderProof]);
+await db.exec('SET ROLE service_role');
+await db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,retentionBucket,heldPath,'hold','Open investigation.']);
+let preview=(await db.query('SELECT public.preview_document_retention() AS files')).rows[0].files;
+const candidates=new Set(preview.map(file=>file.path));
+for(const path of [orphanPath,versionPath,quotedPath])assert.ok(candidates.has(path),path);
+for(const path of [uncertainLegacy,legacyPath,historicalIdPath,heldPath,appIdPath,pendingPath,'retention/recent.pdf'])assert.ok(!candidates.has(path),path);
+await assert.rejects(db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,retentionBucket,historicalIdPath,'release','Closed case.']),/Configure the reviewed-history/);
+await db.query('SELECT public.configure_document_retention($1,true,90)',[ids.admin]);
+await assert.rejects(db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,retentionBucket,appIdPath,'release','Attempt current file.']),/Current\/pending/);
+await db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,retentionBucket,historicalIdPath,'release','Historical case closed; no ongoing dispute.']);
+assert.ok(!(await db.query('SELECT public.preview_document_retention() AS files')).rows[0].files.some(file=>file.path===historicalIdPath));
+await db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,'ownership-documents',builderProof,'release','Archived property case closed.']);
+await db.exec('RESET ROLE');await assert.rejects(db.query("INSERT INTO public.account_security_events(user_id,action,details) VALUES($1,'identity_document_reviewed',jsonb_build_object('document_path',$2::text))",[applicant,historicalIdPath]),/expired or scheduled/);
+await db.exec('RESET ROLE');await db.query("UPDATE public.document_retention_files SET released_at=now()-interval '91 days' WHERE path=$1",[historicalIdPath]);await db.query("UPDATE public.document_retention_files SET released_at=now()-interval '91 days' WHERE path=$1",[builderProof]);
+await db.exec('SET ROLE service_role');
+let claims=(await db.query('SELECT public.claim_document_retention(20,$1) AS files',[ids.admin])).rows[0].files;
+assert.ok(claims.some(file=>file.path===historicalIdPath&&file.reason==='reviewed_history_expired'));
+assert.equal((await db.query('SELECT public.claim_document_retention() AS files')).rows[0].files.length,0);
+await db.exec('RESET ROLE');
+await assert.rejects(db.query("INSERT INTO public.document_versions(document_id,document_url,uploaded_by) VALUES($1,$2,$3)",[appIdDoc,quotedPath,applicant]),/expired or scheduled/);
+await assert.rejects(db.query("INSERT INTO public.account_security_events(user_id,action,details) VALUES($1,'identity_document_reviewed',jsonb_build_object('document_path',$2::text))",[applicant,quotedPath]),/expired or scheduled/);
+await assert.rejects(db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[quotedPath]),/expired or scheduled/);
+await db.exec('SET ROLE service_role');
+await assert.rejects(db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,retentionBucket,orphanPath,'hold','Too late.']),/Cleanup has already/);
+for(const file of claims){
+ await assert.rejects(db.query('SELECT public.finish_document_retention($1,$2,$3)',[file.bucket_id,file.path,file.token]),/Storage deletion is not confirmed/);
+ if(file.reason==='reviewed_history_expired'){
+  await assert.rejects(db.query('DELETE FROM storage.objects WHERE bucket_id=$1 AND name=$2',[file.bucket_id,file.path]),/checksum before deletion/);
+  await db.query('SELECT public.finish_document_retention($1,$2,$3,$4,NULL,true)',[file.bucket_id,file.path,file.token,'a'.repeat(64)]);
+ }
+ await db.query('DELETE FROM storage.objects WHERE bucket_id=$1 AND name=$2',[file.bucket_id,file.path]); // Isolated stand-in for Storage API removal; production worker never SQL-deletes objects.
+ await db.query('SELECT public.finish_document_retention($1,$2,$3)',[file.bucket_id,file.path,file.token]);
+}
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT count(*)::int AS n FROM public.document_versions WHERE document_url=$1',[versionPath])).rows[0].n,1);
+assert.equal((await db.query("SELECT state FROM public.document_retention_files WHERE path=$1",[versionPath])).rows[0].state,'deleted');
+await as('applicantAuth');assert.ok((await db.query('SELECT public.document_expiry_status($1,$2) AS expired',[retentionBucket,historicalIdPath])).rows[0].expired);assert.equal((await db.query('SELECT * FROM public.document_retention_files')).rows.length,0);
+await as('other');await assert.rejects(db.query('SELECT public.document_expiry_status($1,$2)',[retentionBucket,historicalIdPath]),/Evidence access/);
+await db.exec('RESET ROLE');
+assert.ok((await db.query("SELECT count(*)::int AS n FROM public.document_retention_events WHERE action='file_deleted' AND actor_auth_id=$1",[ids.admin])).rows[0].n>=4);
+// Recover a crash after Storage removal but before audit finalization.
+const retryPath='retention/retry.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name,created_at) VALUES('identity-documents',$1,now()-interval '3 days')",[retryPath]);
+await db.exec('SET ROLE service_role');let retry=(await db.query('SELECT public.claim_document_retention() AS files')).rows[0].files.find(file=>file.path===retryPath);
+await db.query('DELETE FROM storage.objects WHERE name=$1',[retryPath]);
+await db.exec('RESET ROLE');await db.query("UPDATE public.document_retention_files SET lease_until=now()-interval '1 minute' WHERE path=$1",[retryPath]);await db.exec('SET ROLE service_role');
+const resumed=(await db.query('SELECT public.claim_document_retention() AS files')).rows[0].files.find(file=>file.path===retryPath);assert.ok(resumed);assert.equal(resumed.object_missing,true);assert.notEqual(resumed.token,retry.token);
+await assert.rejects(db.query('SELECT public.finish_document_retention($1,$2,$3)',[retentionBucket,retryPath,retry.token]),/stale/);
+await db.query('SELECT public.finish_document_retention($1,$2,$3)',[retentionBucket,retryPath,resumed.token]);
+// Permanent failures do not monopolize later cleanup runs; staff can reset a
+// failed claim after investigation without unfreezing its evidence reference.
+await db.exec('RESET ROLE');const limitPath='retention/retry-limit.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name,created_at) VALUES('identity-documents',$1,now()-interval '3 days')",[limitPath]);
+await db.exec('SET ROLE service_role');const limited=(await db.query('SELECT public.claim_document_retention() AS files')).rows[0].files.find(file=>file.path===limitPath);
+await db.query('SELECT public.finish_document_retention($1,$2,$3,NULL,$4)',[retentionBucket,limitPath,limited.token,'Storage unavailable']);
+await db.exec('RESET ROLE');await db.query("UPDATE public.document_retention_files SET attempts=5,lease_until=now()-interval '1 minute' WHERE path=$1",[limitPath]);
+await db.exec('SET ROLE service_role');assert.ok(!(await db.query('SELECT public.claim_document_retention() AS files')).rows[0].files.some(file=>file.path===limitPath));
+await db.query('SELECT public.manage_document_retention($1,$2,$3,$4,$5)',[ids.admin,retentionBucket,limitPath,'retry','Storage issue resolved.']);
+const retried=(await db.query('SELECT public.claim_document_retention(20,$1) AS files',[ids.admin])).rows[0].files.find(file=>file.path===limitPath);assert.equal(retried.attempts,1);
+await db.query('DELETE FROM storage.objects WHERE name=$1',[limitPath]);await db.query('SELECT public.finish_document_retention($1,$2,$3)',[retentionBucket,limitPath,retried.token]);
+await db.query('SELECT public.configure_document_retention($1,false,NULL)',[ids.admin]);assert.equal((await db.query('SELECT public.claim_document_retention() AS files')).rows[0].files.length,0);
+await db.exec('RESET ROLE');await db.exec(retentionMigration);
+assert.equal((await db.query('SELECT enabled FROM public.document_retention_policy')).rows[0].enabled,false);
+// Restoring an archived listing cannot resurrect expired proof. Future reviews
+// must omit expired history while leaving its original immutable records intact.
+await db.query('UPDATE public.properties SET deleted_at=NULL WHERE id=$1',[builderProperty]);
+assert.equal((await db.query('SELECT ownership_verified FROM public.properties WHERE id=$1',[builderProperty])).rows[0].ownership_verified,false);
+await as('admin');await assert.rejects(db.query('SELECT public.admin_publish_property($1)',[builderProperty]),/reviewed ownership/);
+await as('applicantAuth');const restoredProof=builderProperty+'/restored-proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[restoredProof]);
+const restoredProofId=(await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3) RETURNING id",[applicant,builderProperty,restoredProof])).rows[0].id;
+await as('admin');await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[restoredProofId,{...checks,company_owns_project:true},'Restored property and fresh evidence checked.']);
+await db.query('SELECT public.reject_property_review($1,$2,$3,$4,$5)',[builderProperty,'listing','Correct wording','details','Correct the description.']);
+await as('applicantAuth');await db.query("UPDATE public.properties SET description='Corrected restored listing description.' WHERE id=$1",[builderProperty]);
+assert.equal((await db.query('SELECT public.resubmit_property_review($1) AS queue',[builderProperty])).rows[0].queue,'listing');
+await as('admin');await db.query('SELECT public.admin_publish_property($1)',[builderProperty]);
+// KYC re-verification must also skip expired historical property/ID rows.
+await as('applicantAuth');const refreshedIdentity=ids.applicantAuth+'/aadhar/after-retention';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[refreshedIdentity]);
+await db.query("UPDATE public.documents SET document_url=$1,status='pending' WHERE id=$2",[refreshedIdentity,appIdDoc]);
+app=await currentApplication();await db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Current identity bundle reviewed after file expiry.',applicationSnapshot(app)]);
+await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[restoredProofId,{...checks,company_owns_project:true},'Ownership re-reviewed after current identity approval.']);await db.query('SELECT public.admin_publish_property($1)',[builderProperty]);
+await db.exec('RESET ROLE');
+console.log('Document retention passed: grace windows, protected current/pending/reviewed/legacy files, holds, explicit history release, checksum-before-delete, frozen references, private/service-only controls, retained tombstones, retry after partial failure, pause and repeatability.');
+
 const lifecycleAuditSql=fs.readFileSync('supabase/diagnostics/seller-review-flow-audit.sql','utf8');
 await db.exec('BEGIN READ ONLY');const lifecycleAudit=JSON.parse((await db.query(lifecycleAuditSql)).rows[0].seller_review_flow_audit);await db.exec('ROLLBACK');
 for(const key of ['old_verification_triggers_retired','ownership_version_constraint_removed','checked_review_routines_present','consolidated_kyc_routines_present','individual_kyc_decisions_disabled','ownership_approval_waits_for_resubmission','public_visibility_restrictive_policies_present','explicit_draft_guard_enabled','review_and_evidence_rls_enabled','evidence_buckets_private','no_drafts_in_review_queues']) assert.equal(lifecycleAudit.critical_checks[key],true,key);
