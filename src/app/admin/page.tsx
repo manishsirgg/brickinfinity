@@ -88,7 +88,7 @@ export default function AdminDashboard() {
         <Link href="/admin/kyc" className="border rounded-xl p-6 hover:bg-gray-50">
           <div className="text-lg font-semibold">KYC Verification</div>
           <div className="text-sm text-gray-500 mt-1">
-            Pending: {count(stats.kyc)}
+            Pending applications: {count(stats.kyc)}
           </div>
         </Link>
 

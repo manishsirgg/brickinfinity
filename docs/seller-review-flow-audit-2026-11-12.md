@@ -2,6 +2,8 @@
 
 **Result: the current repository implements the requested ordinary-seller flow. The complete lifecycle passed isolated PostgreSQL tests. Live database configuration remains unverified because its configured TCP connection was refused.**
 
+Follow-up: the per-document KYC decision described in this historical audit is superseded by `20261112_consolidated_kyc_applications.sql`. Current KYC uses one complete application decision; see [the current rollout guide](owner-only-verification.md#consolidated-kyc-application-decisions-12-november).
+
 Audited baseline: `origin/main` at `a06bda2`, including PRs #156–#158. This audit changes tests/documentation only, not application behavior or migrations.
 
 | Stage | Implemented behavior | Evidence |

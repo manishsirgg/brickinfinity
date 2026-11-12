@@ -8,7 +8,9 @@ let calls=[];
 const responses=[2,3,7,4,0,10,1].map(count=>({count,error:null}));
 // Each builder is its own thenable; preserve its filter chain for assertions.
 const client={from(table){const index=calls.length,call={table,filters:[]};calls.push(call);const query=new Proxy({}, {get(_,key){if(key==='then')return(resolve,reject)=>Promise.resolve(responses[index]).then(resolve,reject);return(...args)=>{call.filters.push([key,...args]);return query;};}});return query;}};
+client.rpc=function(name){const index=calls.length;calls.push({table:"rpc",name,filters:[]});return Promise.resolve({data:responses[index].count,error:responses[index].error});};
 const result=await exports.loadAdminDashboardStats(client);
+assert.equal(calls[0].name,"count_pending_identity_applications");
 assert.equal(result.properties,7);assert.equal(result.ready,4);assert.equal(result.ownership,3);
 assert.ok(calls[1].filters.some(f=>f[0]==='eq'&&f[1]==='ownership_review_status'&&f[2]==='unreviewed'));
 assert.ok(calls[1].filters.some(f=>f[0]==='eq'&&f[1]==='documents.status'&&f[2]==='pending'));

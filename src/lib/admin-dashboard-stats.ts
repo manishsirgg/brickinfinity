@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export async function loadAdminDashboardStats(supabase: SupabaseClient) {
   const results = await Promise.all([
-    supabase.from("documents").select("id", { count: "exact", head: true }).is("property_id", null).eq("status", "pending"),
+    supabase.rpc("count_pending_identity_applications").then(({ data, error }) => ({ count: typeof data === "number" ? data : null, error })),
     // Count properties, not individual supporting files; match Ownership's pending state.
     supabase.from("properties").select("id,documents!inner(id)", { count: "exact", head: true })
       .eq("status", "pending").eq("ownership_verified", false).eq("ownership_review_status", "unreviewed")
