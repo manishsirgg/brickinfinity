@@ -487,9 +487,87 @@ await publicLifecycleVisibility(1);
 await db.exec('RESET ROLE');const published=(await db.query('SELECT status,verification_status,ownership_verified,ownership_review_status,listing_reviewed_at FROM public.properties WHERE id=$1',[lifecycleProperty])).rows[0];assert.equal(published.status,'active');assert.equal(published.verification_status,'approved');assert.equal(published.ownership_verified,true);assert.ok(published.listing_reviewed_at);
 console.log('Complete lifecycle audit passed: new buyer → ID/selfie/declaration → KYC rejection/resubmission → automatic seller activation → ownership rejection/correction/resubmission/approval → editorial rejection/draft/resubmission → publication. Anonymous access stays blocked until publication; no Users-tab activation required.');
 
+// Current KYC: one user bundle, one atomic decision, never per-file API actions.
+await db.exec('RESET ROLE');
+const beforeKycMigration=(await db.query("SELECT jsonb_agg(jsonb_build_array(id,status,ownership_review_status,ownership_verified) ORDER BY id) AS state FROM public.properties")).rows[0].state;
+const consolidatedKyc=fs.readFileSync('supabase/migrations/20261112_consolidated_kyc_applications.sql','utf8');
+await db.exec(consolidatedKyc);await db.exec(consolidatedKyc);
+assert.deepEqual((await db.query("SELECT jsonb_agg(jsonb_build_array(id,status,ownership_review_status,ownership_verified) ORDER BY id) AS state FROM public.properties")).rows[0].state,beforeKycMigration);
+ids.applicantAuth='00000000-0000-0000-0000-000000000112';
+await as('applicantAuth');
+const applicant=(await db.query("INSERT INTO public.users(user_id,full_name) VALUES($1,'Consolidated Builder') RETURNING id",[ids.applicantAuth])).rows[0].id;
+let appIdPath=ids.applicantAuth+'/aadhar/first';
+await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[appIdPath]);
+const appIdDoc=(await db.query("INSERT INTO public.documents(user_id,document_type,document_url) VALUES($1,'aadhar',$2) RETURNING id",[applicant,appIdPath])).rows[0].id;
+function applicationSnapshot(app){return {full_name:app.profile.full_name,kyc_status:app.profile.kyc_status,seller_status:app.profile.seller_status,seller_identity:app.profile.seller_identity,owner_declaration_at:app.profile.owner_declaration_at,documents:app.documents.slice().sort((a,b)=>a.id.localeCompare(b.id)).map(d=>({id:d.id,document_url:d.document_url,status:d.status}))};}
+async function currentApplication(){await as('admin');return (await db.query('SELECT public.get_pending_identity_applications() AS applications')).rows[0].applications.find(app=>app.user_id===applicant);}
+// A superseded legacy record with no timestamp must not hide the current ID.
+await db.exec('RESET ROLE');await db.query("INSERT INTO public.documents(user_id,document_type,document_url,status,created_at) VALUES($1,'aadhar','missing-old-file','pending',NULL)",[applicant]);
+let app=await currentApplication();assert.ok(app);assert.equal(app.documents.length,1);
+await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Missing declaration',applicationSnapshot(app)]),/declaration must be saved/);
+await as('applicantAuth');await db.query("SELECT public.declare_owner_identity('project_owner_builder',true)");
+await as('admin');await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Stale category preview',applicationSnapshot(app)]),/declaration changed/);
+app=await currentApplication();await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Missing selfie',applicationSnapshot(app)]),/government ID and matching selfie/);
+await as('applicantAuth');
+let appSelfiePath=ids.applicantAuth+'/selfie/first';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[appSelfiePath]);
+const appSelfieDoc=(await db.query("INSERT INTO public.documents(user_id,document_type,document_url) VALUES($1,'selfie',$2) RETURNING id",[applicant,appSelfiePath])).rows[0].id;
+app=await currentApplication();assert.equal(app.documents.length,2);assert.equal(app.profile.seller_identity,'project_owner_builder');
+await as('applicantAuth');await db.query("UPDATE public.users SET full_name='Consolidated Builder Revised' WHERE id=$1",[applicant]);
+await as('admin');await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Stale profile preview',applicationSnapshot(app)]),/profile or declaration changed/);
+app=await currentApplication();
+const countBefore=(await db.query('SELECT public.count_pending_identity_applications() AS n')).rows[0].n;
+assert.equal((await db.query('SELECT jsonb_array_length(public.get_pending_identity_applications()) AS n')).rows[0].n,countBefore);
+await assert.rejects(db.query('SELECT public.review_identity_document($1,true,$2)',[appIdDoc,'Old per-document action']),/permission denied/);
+await assert.rejects(db.query('SELECT public.review_identity_application($1,false,$2,$3)',[applicant,'Incomplete reason',applicationSnapshot(app)]),/must correct/);
+await db.exec('RESET ROLE');await db.query("DELETE FROM storage.objects WHERE name=$1",[appSelfiePath]);
+await as('admin');await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Missing file',applicationSnapshot(app)]),/file is missing/);
+await db.exec('RESET ROLE');await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[appSelfiePath]);
+await as('admin');
+const approvedApp=(await db.query('SELECT public.review_identity_application($1,true,$2,$3) AS result',[applicant,'Government ID and selfie match; project-owning builder declaration reviewed.',applicationSnapshot(app)])).rows[0].result;
+assert.equal(approvedApp.seller_active,true);
+assert.equal(await currentApplication(),undefined); // Old superseded pending rows do not create ghost applications.
+await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Duplicate decision',applicationSnapshot(app)]),/changed|no longer pending/);
+await db.exec('RESET ROLE');let appAccount=(await db.query('SELECT role,kyc_status,seller_status FROM public.users WHERE id=$1',[applicant])).rows[0];assert.deepEqual(appAccount,{role:'seller',kyc_status:'approved',seller_status:'active'});
+assert.equal((await db.query("SELECT count(*)::int AS n FROM public.documents WHERE user_id=$1 AND status::text='approved'",[applicant])).rows[0].n,2);
+assert.equal((await db.query("SELECT count(*)::int AS n FROM public.account_security_events WHERE user_id=$1 AND action='identity_application_reviewed'",[applicant])).rows[0].n,1);
+// Resubmission remains a single user entry; old reviewed file remains retained.
+await as('applicantAuth');appIdPath=ids.applicantAuth+'/aadhar/revised';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[appIdPath]);
+await db.query("UPDATE public.documents SET document_url=$1,status='pending' WHERE id=$2",[appIdPath,appIdDoc]);
+await db.query("DELETE FROM storage.objects WHERE name=$1",[ids.applicantAuth+'/aadhar/first']);
+await db.exec('RESET ROLE');assert.equal((await db.query('SELECT count(*)::int AS n FROM storage.objects WHERE name=$1',[ids.applicantAuth+'/aadhar/first'])).rows[0].n,1);
+app=await currentApplication();
+await db.exec('RESET ROLE');await db.exec("ALTER TABLE public.notifications ADD CONSTRAINT fail_kyc_notification CHECK(title<>'Seller application rejected') NOT VALID");
+await as('admin');await assert.rejects(db.query('SELECT public.review_identity_application($1,false,$2,$3,$4)',[applicant,'Selfie unclear',applicationSnapshot(app),'Upload a clear selfie.']),/fail_kyc_notification/);
+await db.exec('RESET ROLE');assert.equal((await db.query("SELECT count(*)::int AS n FROM public.documents WHERE user_id=$1 AND status::text='rejected'",[applicant])).rows[0].n,0);
+await db.exec('ALTER TABLE public.notifications DROP CONSTRAINT fail_kyc_notification');
+await as('admin');await db.query('SELECT public.review_identity_application($1,false,$2,$3,$4)',[applicant,'Selfie unclear',applicationSnapshot(app),'Upload a clear matching selfie.']);
+assert.equal(await currentApplication(),undefined);
+await db.exec('RESET ROLE');appAccount=(await db.query('SELECT role,kyc_status,seller_status FROM public.users WHERE id=$1',[applicant])).rows[0];assert.deepEqual(appAccount,{role:'buyer',kyc_status:'rejected',seller_status:'basic'});
+assert.equal((await db.query("SELECT count(*)::int AS n FROM public.documents WHERE user_id=$1 AND status::text='rejected' AND rejection_reason LIKE '%Upload a clear matching selfie.%'",[applicant])).rows[0].n,2);
+await as('applicantAuth');
+await assert.rejects(db.query('SELECT public.get_pending_identity_applications()'),/Admin access/);await assert.rejects(db.query('SELECT public.count_pending_identity_applications()'),/Admin access/);
+await assert.rejects(db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Cannot self approve',applicationSnapshot(app)]),/Admin access/);
+appSelfiePath=ids.applicantAuth+'/selfie/revised';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('identity-documents',$1)",[appSelfiePath]);await db.query("UPDATE public.documents SET document_url=$1,status='pending' WHERE id=$2",[appSelfiePath,appSelfieDoc]);
+app=await currentApplication();assert.equal(app.documents.length,2);
+await db.query('SELECT public.review_identity_application($1,true,$2,$3)',[applicant,'Revised selfie and retained ID reviewed together; declaration matches.',applicationSnapshot(app)]);
+assert.equal(await currentApplication(),undefined);
+// Consolidated KYC grants listing eligibility only, never property ownership/publication.
+const builderProperty='00000000-0000-0000-0000-000000000113';
+await as('applicantAuth');await db.query("INSERT INTO public.properties(id,seller_id,title,owner_kind,owner_legal_name,owner_project_name,owner_attested,status) VALUES($1,$2,'Builder project','project_owner_builder','Owning Builder Company','Owned Project',true,'draft')",[builderProperty,applicant]);
+const builderProof=builderProperty+'/proof.pdf';await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('ownership-documents',$1)",[builderProof]);
+const builderProofId=(await db.query("INSERT INTO public.documents(user_id,property_id,document_type,document_url) VALUES($1,$2,'ownership',$3) RETURNING id",[applicant,builderProperty,builderProof])).rows[0].id;
+await as(null);assert.equal((await db.query('SELECT id FROM public.properties WHERE id=$1',[builderProperty])).rows.length,0);
+await as('admin');await assert.rejects(db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[builderProofId,checks,'Builder needs company check']),/builder company owns/);
+await db.query('SELECT public.review_property_ownership($1,true,$2,$3)',[builderProofId,{...checks,company_owns_project:true},'Company owns exact project; ownership evidence reviewed.']);
+await as(null);assert.equal((await db.query('SELECT id FROM public.properties WHERE id=$1',[builderProperty])).rows.length,0);
+await as('admin');await db.query('SELECT public.admin_publish_property($1)',[builderProperty]);
+await as(null);assert.equal((await db.query('SELECT id FROM public.properties WHERE id=$1',[builderProperty])).rows.length,1);
+await db.exec('RESET ROLE');await db.exec(consolidatedKyc);
+console.log('Consolidated KYC passed: one bundled entry/decision, owner-builder declaration, missing/stale evidence blocked, per-file API disabled, atomic notification/audit, rejection and resubmission, file retention, single seller activation and separate builder ownership/publication gates.');
+
 const lifecycleAuditSql=fs.readFileSync('supabase/diagnostics/seller-review-flow-audit.sql','utf8');
 await db.exec('BEGIN READ ONLY');const lifecycleAudit=JSON.parse((await db.query(lifecycleAuditSql)).rows[0].seller_review_flow_audit);await db.exec('ROLLBACK');
-for(const key of ['old_verification_triggers_retired','ownership_version_constraint_removed','checked_review_routines_present','ownership_approval_waits_for_resubmission','public_visibility_restrictive_policies_present','explicit_draft_guard_enabled','review_and_evidence_rls_enabled','evidence_buckets_private','no_drafts_in_review_queues']) assert.equal(lifecycleAudit.critical_checks[key],true,key);
+for(const key of ['old_verification_triggers_retired','ownership_version_constraint_removed','checked_review_routines_present','consolidated_kyc_routines_present','individual_kyc_decisions_disabled','ownership_approval_waits_for_resubmission','public_visibility_restrictive_policies_present','explicit_draft_guard_enabled','review_and_evidence_rls_enabled','evidence_buckets_private','no_drafts_in_review_queues']) assert.equal(lifecycleAudit.critical_checks[key],true,key);
 assert.ok(!JSON.stringify(lifecycleAudit).includes('document_url'));assert.ok(!JSON.stringify(lifecycleAudit).includes('document_path'));
 console.log('Live lifecycle audit SQL validated in a read-only transaction; aggregate counts/configuration only.');
 const diagnosticSql=fs.readFileSync('supabase/diagnostics/ownership-review-reset.sql','utf8').replace('f0aeee08-6dce-44ae-9e3c-f467dc6fb059',ids.reviewedProperty);

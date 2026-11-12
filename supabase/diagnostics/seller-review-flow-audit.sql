@@ -15,6 +15,10 @@ SELECT jsonb_pretty(jsonb_build_object(
    AND to_regprocedure('public.admin_publish_property(uuid)') IS NOT NULL,
   'ownership_approval_waits_for_resubmission',EXISTS(SELECT 1 FROM pg_proc WHERE oid=to_regprocedure('public.review_property_ownership(uuid,boolean,jsonb,text)') AND prosrc LIKE '%seller must resubmit%'),
   'public_visibility_restrictive_policies_present',(SELECT count(*)=2 FROM pg_policy WHERE polrelid='public.properties'::regclass AND polname IN ('owner_public_read_anon','owner_public_read_authenticated') AND NOT polpermissive AND polcmd='r'),
+  'consolidated_kyc_routines_present',to_regprocedure('public.review_identity_application(uuid,boolean,text,jsonb,text)') IS NOT NULL
+   AND to_regprocedure('public.get_pending_identity_applications(integer)') IS NOT NULL
+   AND to_regprocedure('public.count_pending_identity_applications()') IS NOT NULL,
+  'individual_kyc_decisions_disabled',NOT has_function_privilege('authenticated','public.review_identity_document(uuid,boolean,text)','EXECUTE'),
   'explicit_draft_guard_enabled',EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.properties'::regclass AND tgname='zz_guard_review_submission' AND tgenabled<>'D'),
   'review_and_evidence_rls_enabled',NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='public' AND c.relname IN ('users','properties','documents','property_review_requests') AND NOT c.relrowsecurity),
@@ -28,7 +32,7 @@ SELECT jsonb_pretty(jsonb_build_object(
  ),
  'queues',jsonb_build_object(
   'kyc_pending_documents',(SELECT count(*) FROM public.documents WHERE property_id IS NULL AND document_type::text IN ('aadhar','passport','driving_license','selfie') AND status::text='pending'),
-  'kyc_pending_applicants',(SELECT count(DISTINCT user_id) FROM public.documents WHERE property_id IS NULL AND document_type::text IN ('aadhar','passport','driving_license','selfie') AND status::text='pending'),
+  'kyc_pending_applicants',(SELECT count(*) FROM brick_private.pending_identity_applicants()),
   'ownership_pending_properties',(SELECT count(*) FROM public.properties p WHERE p.status::text='pending' AND NOT p.ownership_verified
    AND p.ownership_review_status='unreviewed' AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM public.documents d WHERE d.property_id=p.id AND d.user_id=p.seller_id AND d.document_type::text='ownership' AND d.status::text='pending')),
   'ready_for_publication',(SELECT count(*) FROM public.properties WHERE status::text='pending' AND deleted_at IS NULL
