@@ -14,6 +14,7 @@ const PAGE_SIZE = 10;
 
 export default function LeadsPage() {
 
+  const [actionError,setActionError] = useState("");
   const [loading,setLoading] = useState(true);
   const [leads,setLeads] = useState<any[]>([]);
   const [page,setPage] = useState(0);
@@ -49,7 +50,7 @@ export default function LeadsPage() {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      const {data,error} =
+      const {data,error,count} =
         await supabase
           .from("leads")
           .select(`
@@ -69,27 +70,16 @@ export default function LeadsPage() {
               status,
               property_images(image_url,sort_order)
             )
-          `)
+          `, { count: "exact" })
           .eq("seller_id",sellerId)
           .order("created_at",{ascending:false})
           .range(from,to);
 
       if(error) throw error;
 
-      /* ⭐ FILTER ONLY ACTIVE PROPERTY LEADS */
-
-      const filtered =
-        (data || []).filter((l:any)=>{
-          const p =
-            Array.isArray(l.properties)
-              ? l.properties[0]
-              : l.properties;
-
-          return p?.status === "active";
-        });
-
+      const filtered = data || [];
       setLeads(filtered);
-      setTotalCount(filtered.length);
+      setTotalCount(count || 0);
       const phoneKeys = new Set<string>();
       const emailKeys = new Set<string>();
       filtered.forEach((l:any)=>{ if(l.buyer_phone) phoneKeys.add(String(l.buyer_phone).replace(/\D/g,"")); if(l.buyer_email) emailKeys.add(String(l.buyer_email).toLowerCase()); });
@@ -120,6 +110,7 @@ export default function LeadsPage() {
 
   const markAsContacted = async(leadId:string)=>{
 
+    setActionError("");
     setActionLoading(leadId);
 
     const prev = [...leads];
@@ -132,18 +123,16 @@ export default function LeadsPage() {
       )
     );
 
-    const {error} =
-      await supabase
-        .from("leads")
-        .update({
-          contacted:true,
-          status:"contacted"
-        })
-        .eq("id",leadId);
+    let error: string | null = null;
+    try {
+      const response = await fetch("/api/enquiries", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: leadId, action: "contact_lead" }) });
+      if (!response.ok) { const payload = await response.json(); error = payload.error || "Unable to update lead."; }
+    } catch { error = "Unable to update lead. Please try again."; }
 
     if(error){
 
       console.error(error);
+      setActionError(error);
       setLeads(prev);
 
     }
@@ -176,6 +165,8 @@ export default function LeadsPage() {
         />
       </div>
 
+      {actionError && <p role="alert" className="mb-4 text-red-700">{actionError}</p>}
+      <Link href="/enquiries?view=seller" className="block mb-6 rounded-xl border p-4 underline">Manage tracked enquiries & visit requests →</Link>
       {leads.length === 0 && (
 
         <Card className="text-center py-16 space-y-4">
@@ -204,7 +195,7 @@ export default function LeadsPage() {
               : lead.properties;
 
           const image =
-            getCoverImage(property.property_images);
+            getCoverImage(property?.property_images);
 
           const whatsappLink = lead.buyer_phone
             ? `https://wa.me/91${lead.buyer_phone.replace(/\D/g,"")}`
@@ -235,7 +226,7 @@ export default function LeadsPage() {
                 <div className="flex-1">
 
                   <Link
-                    href={`/property/${property?.id}/${property?.slug}`}
+                    href={property?.status === "active" ? `/property/${property.id}/${property.slug}` : property?.id ? `/dashboard/edit/${property.id}` : "/dashboard/my-listings"}
                     className="font-semibold hover:underline"
                   >
                     {property?.property_type}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -19,10 +19,20 @@ export default function StickyContactPanel({
   const router = useRouter();
   const supabase = createClient();
 
+  const requestKey = useRef<string | null>(null);
+
+  const [visit, setVisit] = useState(false);
+  const [visitTime, setVisitTime] = useState("");
   const [name,setName] = useState("");
   const [phone,setPhone] = useState("");
   const [email,setEmail] = useState("");
   const [message,setMessage] = useState("");
+  const lastPayload = useRef("");
+  const key = (forVisit = false) => {
+    const fingerprint = JSON.stringify({ name, phone, email, message, visitTime: forVisit && visit ? visitTime : null });
+    if (lastPayload.current !== fingerprint) { requestKey.current = null; lastPayload.current = fingerprint; }
+    return requestKey.current ||= crypto.randomUUID();
+  };
 
   const [loading,setLoading] = useState(false);
   const [success,setSuccess] = useState("");
@@ -77,17 +87,20 @@ export default function StickyContactPanel({
         phone,
         email,
         message,
-        source:"contact_panel"
+        source:"contact_panel",
+        request_key: key(true),
+        visit_at: visit && visitTime ? new Date(`${visitTime}:00+05:30`).toISOString() : null
       })
     });
 
     if (res.status === 401) {
-      router.push("/login");
-      return;
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      throw new Error("Sign in to send and track your enquiry.");
     }
 
     if(!res.ok){
-      throw new Error("Lead failed");
+      const payload = await res.json();
+      throw new Error(payload.error || "Unable to send enquiry.");
     }
 
   };
@@ -102,6 +115,8 @@ export default function StickyContactPanel({
 
     setError("");
     setSuccess("");
+
+    if (visit && !visitTime) { setError("Choose a preferred visit date and time."); return; }
 
     if(!name || !phone){
       setError("Please enter your name and phone number.");
@@ -119,19 +134,20 @@ export default function StickyContactPanel({
 
       await sendLead();
 
-      setSuccess("Your enquiry has been sent successfully.");
+      setSuccess(visit ? "Visit request delivered. Wait for seller confirmation in My enquiries & visits." : "Enquiry delivered to the seller inbox. Track its progress in My enquiries & visits.");
+      requestKey.current = null;
 
       setName("");
       setPhone("");
       setEmail("");
       setMessage("");
 
-    }catch(err:any){
+    }catch(err:unknown){
 
-      if (err.message === "Property not available") {
+      if (err instanceof Error && err.message === "Property not available") {
         setError("This property is not accepting enquiries.");
       } else {
-        setError("Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }
 
     }finally{
@@ -178,12 +194,13 @@ export default function StickyContactPanel({
           buyer_name: name,
           buyer_phone: phone,
           buyer_email: email,
-          message
+          message, request_key: key()
         })
       });
 
       if (!revealRes.ok) {
-        throw new Error("Reveal failed");
+        const payload = await revealRes.json();
+        throw new Error(payload.error || "Unable to reveal seller phone.");
       }
 
       const payload = await revealRes.json();
@@ -197,11 +214,11 @@ export default function StickyContactPanel({
       setSellerPhone(revealedPhone);
       setRevealed(true);
 
-      setSuccess("Seller number revealed.");
+      setSuccess("Seller number revealed. Your enquiry is available in My enquiries & visits.");
 
-    }catch{
+    }catch(err){
 
-      setError("Unable to reveal phone. Please try later.");
+      setError(err instanceof Error ? err.message : "Unable to reveal phone. Please try later.");
 
     }finally{
 
@@ -255,11 +272,13 @@ Please share more details.`
         </div>
       )}
 
+      <a href="/enquiries" className="block text-sm underline">My enquiries & visits</a>
       <form onSubmit={handleSubmit} className="space-y-3">
 
         <input
           value={name}
           onChange={(e)=>setName(e.target.value)}
+          required maxLength={100} aria-label="Your name"
           placeholder="Your Name"
           className="w-full border p-3 rounded-md"
         />
@@ -268,6 +287,7 @@ Please share more details.`
           type="tel"
           value={phone}
           onChange={(e)=>setPhone(e.target.value)}
+          required maxLength={13} aria-label="Indian mobile number"
           placeholder="Phone Number"
           className="w-full border p-3 rounded-md"
         />
@@ -276,24 +296,31 @@ Please share more details.`
           type="email"
           value={email}
           onChange={(e)=>setEmail(e.target.value)}
+          maxLength={254} aria-label="Email (optional)"
           placeholder="Email (optional)"
           className="w-full border p-3 rounded-md"
         />
 
         <textarea
-          rows={3}
+          rows={3} maxLength={2000} aria-label="Enquiry message"
           value={message}
           onChange={(e)=>setMessage(e.target.value)}
           placeholder="Message"
           className="w-full border p-3 rounded-md"
         />
 
+        <label className="flex items-center gap-2"><input type="checkbox" checked={visit} onChange={e => { setVisit(e.target.checked); requestKey.current = null; }} />Schedule a visit</label>
+        {visit && <label className="block text-sm">Preferred date & time (IST)
+          <input type="datetime-local" required value={visitTime} onChange={e => setVisitTime(e.target.value)} className="w-full border rounded-md p-3" />
+          <span className="block text-xs text-muted">9 AM–6 PM IST, at least one hour ahead, within 60 days. This is a request, not a confirmed appointment. Allow one hour per visit.</span>
+        </label>}
+        <p className="text-xs text-muted">By sending, you agree to share these contact details with the property seller for this enquiry.</p>
         <button
           type="submit"
           disabled={loading}
           className="btn-primary w-full"
         >
-          {loading ? "Sending..." : "Send Enquiry"}
+          {loading ? "Sending..." : visit ? "Request a visit" : "Send Enquiry"}
         </button>
 
       </form>
@@ -343,7 +370,7 @@ Please share more details.`
       </a>
 
       <p className="text-xs text-muted text-center">
-        Your details are safe. Seller will contact you directly.
+        Delivery is tracked in the site inbox. Calls and WhatsApp messages are handled outside BrickInfinity.
       </p>
 
     </div>
