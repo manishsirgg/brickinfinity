@@ -11,6 +11,7 @@ const supabase = createClient();
 const PAGE_SIZE = 10;
 
 export default function AdminLeadsPage() {
+  const [actionError,setActionError] = useState("");
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<any[]>([]);
   const [page, setPage] = useState(0);
@@ -49,7 +50,6 @@ export default function AdminLeadsPage() {
           { count: "exact" }
         )
         .eq("users.role", "admin")
-        .eq("properties.status", "active")
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -69,6 +69,7 @@ export default function AdminLeadsPage() {
   }, [fetchLeads]);
 
   const markAsContacted = async (leadId: string) => {
+    setActionError("");
     setActionLoading(leadId);
 
     const prev = [...leads];
@@ -81,16 +82,15 @@ export default function AdminLeadsPage() {
       )
     );
 
-    const { error } = await supabase
-      .from("leads")
-      .update({
-        contacted: true,
-        status: "contacted",
-      })
-      .eq("id", leadId);
+    let error: string | null = null;
+    try {
+      const response = await fetch("/api/enquiries", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: leadId, action: "contact_lead" }) });
+      if (!response.ok) { const payload = await response.json(); error = payload.error || "Unable to update lead."; }
+    } catch { error = "Unable to update lead. Please try again."; }
 
     if (error) {
       console.error(error);
+      setActionError(error);
       setLeads(prev);
     }
 
@@ -113,6 +113,8 @@ export default function AdminLeadsPage() {
         Admin Listing Leads
       </h1>
 
+      {actionError && <p role="alert" className="mb-4 text-red-700">{actionError}</p>}
+      <Link href="/enquiries?view=seller" className="block mb-6 rounded-xl border p-4 underline">Manage enquiries & visits for admin listings →</Link>
       {leads.length === 0 && (
         <Card className="text-center py-16 space-y-4">
           <p className="text-muted text-sm">
@@ -135,7 +137,7 @@ export default function AdminLeadsPage() {
               : lead.properties;
 
           const image =
-            getCoverImage(property.property_images);
+            getCoverImage(property?.property_images);
 
           const whatsappLink = lead.buyer_phone
             ? `https://wa.me/91${lead.buyer_phone.replace(/\D/g, "")}`
@@ -159,7 +161,7 @@ export default function AdminLeadsPage() {
 
                 <div className="flex-1">
                   <Link
-                    href={`/property/${property?.id}/${property?.slug}`}
+                    href={property?.status === "active" ? `/property/${property.id}/${property.slug}` : "/admin/properties"}
                     className="font-semibold hover:underline"
                   >
                     {property?.property_type}

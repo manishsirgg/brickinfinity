@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
 type SupabaseErrorShape = {
@@ -39,129 +40,31 @@ function toSupabaseErrorShape(error: unknown): SupabaseErrorShape {
 
 export async function POST(req: Request) {
   try {
+    if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
     const body = await req.json();
-    console.info("[property-lead] received payload", {
-      property_id: body?.property_id,
-      has_name: Boolean(body?.name),
-      has_phone: Boolean(body?.phone),
-      has_email: Boolean(body?.email),
-    });
-
-    const { property_id, name, phone, email, message } = body;
-
-    if (!property_id || !name || (!phone && !email)) {
-      return NextResponse.json(
-        { error: "property_id, buyer_name and phone/email are required" },
-        { status: 400 }
-      );
+    const { property_id, name, phone, email, message, request_key, visit_at } = body;
+    const client = await createClient();
+    const { data: { user } } = await client.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Sign in to send and track an enquiry." }, { status: 401 });
+    if (typeof name !== "string" || typeof phone !== "string" || (email != null && typeof email !== "string") || (message != null && typeof message !== "string")) {
+      return NextResponse.json({ error: "Enter valid contact details." }, { status: 400 });
     }
-
     const normalizedPhone = normalizePhone(phone);
-    if (phone && (!normalizedPhone || !/^[6-9]\d{9}$/.test(normalizedPhone))) {
-      return NextResponse.json(
-        { error: "Invalid phone number" },
-        { status: 400 }
-      );
-    }
-
+    const normalizedEmail = email?.trim().toLowerCase() || null;
     const normalizedWhatsAppNumber = normalizePhoneForWhatsApp(phone);
-    const normalizedEmail = typeof email === "string" ? email.trim() : null;
-    const safeMessage = (typeof message === "string" && message.trim())
-      ? message.trim()
-      : "Enquiry received from property detail form";
-
-    const supabase = createServiceClient();
-
-    const { data: property, error: propertyError } = await supabase
-      .from("properties")
-      .select("id, seller_id, title, status, availability_status, deleted_at")
-      .eq("id", property_id)
-      .maybeSingle();
-
-    if (propertyError) {
-      console.error("[property-lead] property lookup failed", toSupabaseErrorShape(propertyError));
-      return NextResponse.json({ error: "Unable to process enquiry" }, { status: 500 });
-    }
-
-    if (!property) {
-      return NextResponse.json(
-        { error: "Property not found" },
-        { status: 404 }
-      );
-    }
-
-    if (property.status !== "active" || property.deleted_at || ["rented", "sold", "unavailable"].includes(property.availability_status)) {
-      return NextResponse.json(
-        { error: "Property not active" },
-        { status: 400 }
-      );
-    }
-
-    if (!property.seller_id) {
-      return NextResponse.json(
-        { error: "Property owner unavailable" },
-        { status: 400 }
-      );
-    }
-
-    const { data: sellerProfile } = await supabase
-      .from("users")
-      .select("id")
-      .or(`id.eq.${property.seller_id},user_id.eq.${property.seller_id}`)
-      .maybeSingle();
-
-    const resolvedSellerId = sellerProfile?.id || property.seller_id;
-    console.info("[property-lead] property seller resolved", { property_id, seller_id: resolvedSellerId });
-
-    const twelveHoursAgo =
-      new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-
-    const { data: existingLead } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("property_id", property_id)
-      .eq("buyer_phone", normalizedPhone)
-      .gte("created_at", twelveHoursAgo)
-      .maybeSingle();
-
-    if (existingLead) {
-      return NextResponse.json({ success: true, crmSync: "skipped" });
-    }
-
-    const { error } = await supabase
-      .from("leads")
-      .insert({
-        property_id,
-        seller_id: resolvedSellerId,
-        buyer_name: name,
-        buyer_phone: normalizedPhone,
-        buyer_email: normalizedEmail,
-        message,
-        status: "new",
-        contacted: false,
-      });
-
-    if (error) {
-      console.error("[property-lead] Lead insert error", toSupabaseErrorShape(error));
-      return NextResponse.json(
-        { error: "Failed to create lead" },
-        { status: 500 }
-      );
-    }
-
-    const { data: leadRow } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("property_id", property_id)
-      .eq("seller_id", resolvedSellerId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    console.info("[property-lead] lead created", { lead_id: leadRow?.id || null, property_id, seller_id: resolvedSellerId });
+    const safeMessage = message?.trim() || "";
+    const { data: submitted, error: submissionError } = await client.rpc("submit_property_enquiry", {
+      p_property_id: property_id, p_request_key: request_key,
+      p_name: name, p_phone: normalizedPhone, p_email: normalizedEmail,
+      p_message: safeMessage, p_visit_at: visit_at || null,
+    });
+    if (submissionError) return NextResponse.json({ error: submissionError.code === "P0001" ? submissionError.message : "Unable to submit this enquiry. Please try again." }, { status: 400 });
+    if (submitted.duplicate) return NextResponse.json({ success: true, enquiry_id: submitted.id, delivery: "inbox", duplicate: true });
+    const resolvedSellerId = submitted.seller_id;
+    const leadRow = { id: submitted.lead_id };
+    const property = { id: property_id, title: submitted.property_title };
 
     let crmSync: "completed" | "failed" = "completed";
-    let notificationSync: "completed" | "failed" | "skipped" = "skipped";
     let contactId: string | undefined;
     try {
       console.info("[crm-auto-sync] starting", { lead_id: leadRow?.id || null, property_id, seller_id: resolvedSellerId });
@@ -227,7 +130,6 @@ export async function POST(req: Request) {
             lead_temperature: "hot",
             source: "property_enquiry",
             source_details: property.title || "Property enquiry",
-            notes: safeMessage,
             lifecycle_stage: shouldKeepStage ? undefined : "new",
             metadata,
             updated_by: null,
@@ -307,65 +209,10 @@ export async function POST(req: Request) {
       console.error("[crm-auto-sync] failed", toSupabaseErrorShape(crmError));
     }
 
-    if (leadRow?.id && resolvedSellerId) {
-      try {
-        const supabaseAdmin = createServiceClient();
-        const propertyTitle = property.title || "your property";
-        const notificationMetadata = {
-          source: "property_detail_form",
-          lead_id: leadRow.id,
-          property_id: property.id,
-          seller_id: resolvedSellerId,
-          buyer_name: name,
-          buyer_phone: normalizedPhone,
-          buyer_email: normalizedEmail,
-          property_title: property.title || null,
-          crm_contact_id: contactId || null,
-          created_from: "api/leads",
-        };
-
-        const notificationLink = contactId
-          ? `/seller/crm/contacts/${contactId}`
-          : "/dashboard/leads";
-
-        const { error: notificationError } = await supabaseAdmin.rpc(
-          "create_notification",
-          {
-            p_user_id: resolvedSellerId,
-            p_title: "New property enquiry",
-            p_message: `${name} enquired about ${propertyTitle}.`,
-            p_type: "lead",
-            p_category: "lead",
-            p_priority: "high",
-            p_link_url: notificationLink,
-            p_action_label: "View Lead",
-            p_entity_type: "lead",
-            p_entity_id: leadRow.id,
-            p_metadata: notificationMetadata,
-            p_expires_at: null,
-          }
-        );
-
-        if (notificationError) throw notificationError;
-        notificationSync = "completed";
-        console.info("[notification-sync] seller lead notification created", {
-          lead_id: leadRow.id,
-          seller_id: resolvedSellerId,
-          property_id: property.id,
-          crm_contact_id: contactId || null,
-        });
-      } catch (notificationError) {
-        notificationSync = "failed";
-        console.error("[notification-sync] seller lead notification failed", {
-          lead_id: leadRow.id,
-          seller_id: resolvedSellerId,
-          property_id: property.id,
-          error: toSupabaseErrorShape(notificationError),
-        });
-      }
-    }
-
-    return NextResponse.json({ success: true, crmSync, notificationSync });
+    try {
+      await createServiceClient().from("property_enquiries").update({ crm_sync: crmSync }).eq("id", submitted.id);
+    } catch { /* Inbox delivery already committed; CRM failure must not report a lost enquiry. */ }
+    return NextResponse.json({ success: true, enquiry_id: submitted.id, delivery: "inbox", crmSync });
   } catch (err) {
     console.error("[property-lead] Lead API error:", err);
 

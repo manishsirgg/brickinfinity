@@ -40,6 +40,12 @@ export default function LoginPage() {
       .single();
 
     const role = userRecord?.role ?? "buyer";
+    // Only local enquiry/property return paths are accepted after sign-in.
+    const requested = new URLSearchParams(window.location.search).get("redirect");
+    if (requested && /^\/(?:enquiries(?:\?|$)|property\/[a-zA-Z0-9/-]+$)/.test(requested) && !requested.includes("\\")) {
+      window.location.href = requested;
+      return;
+    }
 
     if (role === "admin") {
       window.location.href = "/admin";

@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createSessionClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
+    if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+    const session = await createSessionClient();
+    const { data: { user } } = await session.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Sign in to reveal seller contact details and track your enquiry." }, { status: 401 });
     const body = await req.json();
     const {
       property_id,
@@ -12,7 +17,8 @@ export async function POST(req: Request) {
       message,
     } = body ?? {};
 
-    const normalizedPhone = String(buyer_phone || "").replace(/\D/g, "");
+    const digits = String(buyer_phone || "").replace(/\D/g, "");
+    const normalizedPhone = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
 
     if (!property_id || !buyer_name || !normalizedPhone) {
       return NextResponse.json(
@@ -59,37 +65,15 @@ export async function POST(req: Request) {
       .or(`id.eq.${property.seller_id},user_id.eq.${property.seller_id}`)
       .maybeSingle();
 
-    const resolvedSellerId = sellerProfile?.id || property.seller_id;
 
-    const { data: recentLead } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("property_id", property_id)
-      .eq("buyer_phone", normalizedPhone)
-      .gte("created_at", new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString())
-      .maybeSingle();
-
-    if (!recentLead) {
-      const { error: insertLeadError } = await supabase
-        .from("leads")
-        .insert({
-          property_id,
-          seller_id: resolvedSellerId,
-          buyer_name,
-          buyer_phone: normalizedPhone,
-          buyer_email,
-          message,
-          status: "new",
-        });
-
-      if (insertLeadError) {
-        console.error("Reveal lead insert error:", insertLeadError);
-        return NextResponse.json(
-          { error: "Failed to create lead" },
-          { status: 500 }
-        );
-      }
-    }
+    // Use the same checked submission, delivery and CRM flow as the enquiry form.
+    const { POST: submitLead } = await import("@/app/api/leads/route");
+    const delivered = await submitLead(new Request(req.url, {
+      method: "POST", headers: req.headers,
+      body: JSON.stringify({ property_id, name: buyer_name, phone: buyer_phone,
+        email: buyer_email, message, request_key: body.request_key }),
+    }));
+    if (!delivered.ok) return delivered;
 
     const phone = String(
       sellerProfile?.phone || sellerProfile?.whatsapp_number || ""
@@ -97,7 +81,7 @@ export async function POST(req: Request) {
 
     if (!phone) {
       return NextResponse.json(
-        { error: "Seller phone unavailable" },
+        { error: "Your enquiry was delivered, but the seller phone is unavailable. Track the enquiry in My enquiries & visits." },
         { status: 404 }
       );
     }
