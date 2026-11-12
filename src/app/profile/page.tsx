@@ -313,15 +313,8 @@ export default function ProfilePage() {
 
     const existing = documents[type];
 
-    /* DELETE OLD FILE IF EXISTS */
-
-if (existing?.document_url) {
-  try {
-    await deleteImage("identity-documents", existing.document_url);
-  } catch (err) {
-    console.warn("Old KYC delete failed", err);
-  }
-}
+    // Keep earlier evidence until the controlled retention worker expires it.
+    // Upload first, then move the current pointer; never delete from this client.
 
     let documentId: string;
 
