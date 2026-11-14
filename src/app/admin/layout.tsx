@@ -41,6 +41,8 @@ export default async function AdminLayout({
               KYC
             </Link>
 
+            <Link href="/admin/search-alerts" className="hover:underline">Search alerts</Link>
+
             <Link href="/admin/document-retention" className="hover:underline">Document retention</Link>
 
             <Link href="/admin/ownership" className="hover:underline">

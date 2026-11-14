@@ -333,6 +333,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
 
                 {accountOpen && (
                   <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-xl border border-gray-100 z-50">
+                    <Link href="/buyer" onClick={() => setAccountOpen(false)} className="block px-4 py-2 hover:bg-gray-100">My property dashboard</Link>
                     <Link href="/enquiries" onClick={() => setAccountOpen(false)} className="block px-4 py-2 hover:bg-gray-100">My enquiries & visits</Link>
                     <Link
                       href="/profile"
@@ -451,6 +452,7 @@ export default function NavbarClient({ user }: NavbarClientProps) {
               </>
             ) : (
               <>
+                <Link href="/buyer" onClick={() => setMobileOpen(false)} className="block">My property dashboard</Link>
                 <Link href="/enquiries" onClick={() => setMobileOpen(false)} className="block">My enquiries & visits</Link>
                 <Link
                   href="/profile"

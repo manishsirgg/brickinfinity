@@ -40,9 +40,9 @@ export default function LoginPage() {
       .single();
 
     const role = userRecord?.role ?? "buyer";
-    // Only local enquiry/property return paths are accepted after sign-in.
+    // Only local buyer/search/property return paths are accepted after sign-in.
     const requested = new URLSearchParams(window.location.search).get("redirect");
-    if (requested && /^\/(?:enquiries(?:\?|$)|property\/[a-zA-Z0-9/-]+$)/.test(requested) && !requested.includes("\\")) {
+    if (requested && /^\/(?:enquiries(?:\?|$)|buyer(?:\?|$)|properties(?:\?|$)|property\/[a-zA-Z0-9/-]+$)/.test(requested) && !requested.includes("\\")) {
       window.location.href = requested;
       return;
     }

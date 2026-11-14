@@ -1,3 +1,5 @@
+import SaveSearchControl from "@/components/buyer/SaveSearchControl";
+import { searchEmailConfigured } from "@/lib/buyer/email-alerts";
 import PropertySortControl from "@/components/property/PropertySortControl";
 import PropertySearchFilters from "@/components/property/PropertySearchFilters";
 import { propertySortOrder, parsePropertySort, SEARCH_AMENITIES, FURNISHING_TYPES, PROPERTY_TYPES } from "@/lib/property-result-options";
@@ -360,6 +362,7 @@ export default async function PropertiesSearchPage({
             <p className="text-sm text-muted">{totalMatches} properties found.</p>
             <PropertySortControl key={JSON.stringify(resolvedSearchParams)} values={{ ...resolvedSearchParams, sort }} />
           </div>
+          {!filterError && !error && <SaveSearchControl key={JSON.stringify(resolvedSearchParams)} filters={resolvedSearchParams} emailConfigured={searchEmailConfigured()} />}
           <p className="text-xs text-slate-500">Featured listings are labeled; your selected sort order is preserved.</p>
 
       {(filterError || error) && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{filterError || "Properties could not be loaded. Please try again."}</p>}

@@ -1,3 +1,5 @@
+import RecordPropertyView from "@/components/buyer/RecordPropertyView";
+import { CompareButton } from "@/components/buyer/CompareControls";
 import VerificationBadges from "@/components/property/VerificationBadges";
 import RentalCostBreakdown from "@/components/property/RentalCostBreakdown";
 import PropertyAvailability from "@/components/property/PropertyAvailability";
@@ -294,6 +296,8 @@ This property is not yet live. Only you can see this preview.
 {locality}, {city}
 </p>
 
+<RecordPropertyView propertyId={property.id} />
+<CompareButton propertyId={property.id} />
 <PropertyViews count={property.views_count} />
 <PropertyAvailability property={property} />
 

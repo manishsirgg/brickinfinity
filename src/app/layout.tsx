@@ -1,3 +1,4 @@
+import { CompareTray } from "@/components/buyer/CompareControls";
 import BackToTop from "@/components/BackToTop";
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
@@ -135,6 +136,7 @@ export default function RootLayout({
         {/* FLOATING WHATSAPP CTA */}
         <WhatsAppFloatingButton />
         <BackToTop />
+        <CompareTray />
 
         {/* FOOTER */}
         <Footer />
