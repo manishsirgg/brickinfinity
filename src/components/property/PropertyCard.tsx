@@ -1,5 +1,6 @@
 "use client"
 
+import { CompareButton } from "@/components/buyer/CompareControls";
 import { getCoverImage } from "@/lib/property-images";
 import VerificationBadges from "./VerificationBadges"
 import type { VerificationFields } from "@/lib/owner-verification"
@@ -13,6 +14,7 @@ type PropertyCardProperty = VerificationFields & {
   available_from?: string | null
   availability_confirmed_at?: string | null
   id: string
+  title?: string | null
   slug?: string | null
   property_type?: string | null
   listing_type?: string | null
@@ -111,14 +113,16 @@ export default function PropertyCard({ property }: Props) {
   const isFeaturedActive = isPropertyFeaturedActive(property)
 
   return (
+    <div className="flex min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-white overflow-hidden">
     <Link
       href={propertyUrl}
-      className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-xl transition duration-300 group block h-full"
+      className="min-w-0 bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-xl transition duration-300 group block flex-1"
     >
-      <div className="relative overflow-hidden">
+      <div className="relative aspect-square w-full overflow-hidden">
         <img
           src={image}
-          className="aspect-square w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="absolute inset-0 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          style={{ height: "100%" }}
           alt={property?.property_type || "Property"}
         />
 
@@ -175,7 +179,7 @@ export default function PropertyCard({ property }: Props) {
 
         {propertyType && (
           <p className="font-semibold text-[var(--color-dark)] line-clamp-2">
-            {propertyType}
+            {property.title || propertyType}
           </p>
         )}
 
@@ -207,5 +211,7 @@ export default function PropertyCard({ property }: Props) {
         )}
       </div>
     </Link>
+    <div className="border-t p-3"><CompareButton propertyId={property.id} /></div>
+    </div>
   )
 }

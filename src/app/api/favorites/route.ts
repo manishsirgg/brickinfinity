@@ -1,44 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-
 export async function POST(req: Request) {
-
-  const supabase = await createClient();
-
-  const { propertyId } = await req.json();
-
-  const { data: { session } } =
-    await supabase.auth.getSession();
-
-  if (!session)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const userId = session.user.id;
-
-  const { data } = await supabase
-    .from("favorites")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("property_id", propertyId)
-    .single();
-
-  if (data) {
-
-    await supabase
-      .from("favorites")
-      .delete()
-      .eq("id", data.id);
-
-    return NextResponse.json({ saved: false });
-
-  }
-
-  await supabase
-    .from("favorites")
-    .insert({
-      user_id: userId,
-      property_id: propertyId
-    });
-
-  return NextResponse.json({ saved: true });
+  if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Invalid origin." }, { status: 403 });
+  const db = await createClient();
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Sign in to save properties." }, { status: 401 });
+  let body;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid request." }, { status: 400 }); }
+  const { data, error } = await db.rpc(body?.action === "remove" ? "remove_buyer_favorite" : "toggle_buyer_favorite", { p_property_id: body?.propertyId });
+  if (error) return NextResponse.json({ error: error.code === "P0001" ? error.message : "Saved properties could not be updated." }, { status: 400 });
+  return NextResponse.json({ saved: body?.action === "remove" ? false : data });
 }
